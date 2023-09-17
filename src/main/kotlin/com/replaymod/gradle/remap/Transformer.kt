@@ -1,7 +1,7 @@
 package com.replaymod.gradle.remap
 
-import com.replaymod.gradle.remap.legacy.LegacyMapping
 import org.cadixdev.lorenz.MappingSet
+import org.cadixdev.lorenz.io.MappingFormats
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.config.ContentRoot
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
@@ -28,16 +28,15 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.utils.PathUtil
-import java.io.BufferedReader
-import java.io.File
-import java.io.IOException
-import java.io.InputStreamReader
+import java.io.*
 import java.lang.Exception
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.*
+import java.util.stream.Collectors
 import kotlin.system.exitProcess
 
 class Transformer(private val map: MappingSet) {
@@ -49,24 +48,26 @@ class Transformer(private val map: MappingSet) {
     var manageImports = false
 
     @Throws(IOException::class)
-    fun remap(sources: Map<String, String>): Map<String, Pair<String, List<Pair<Int, String>>>> =
-            remap(sources, emptyMap())
+    fun remap(sources: Map<Path, Map<String, () -> InputStream>>, writer: (Path, String) -> OutputStream): Map<Pair<Path, String>, List<Pair<Int, String>>> = remap(sources, emptyMap(), writer)
+
 
     @Throws(IOException::class)
-    fun remap(sources: Map<String, String>, processedSources: Map<String, String>): Map<String, Pair<String, List<Pair<Int, String>>>> {
+    fun remap(sources: Map<Path, Map<String, () -> InputStream>>, processedSources: Map<String, () -> InputStream>, writer: (Path, String) -> OutputStream): Map<Pair<Path, String>, List<Pair<Int, String>>> {
         val tmpDir = Files.createTempDirectory("remap")
         val processedTmpDir = Files.createTempDirectory("remap-processed")
         val disposable = Disposer.newDisposable()
         try {
-            for ((unitName, source) in sources) {
-                val path = tmpDir.resolve(unitName)
+            for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
+                val unitName = unit.key
+                val source = unit.value
+                val path = tmpDir.resolve(root.fileName).resolve(unitName)
                 Files.createDirectories(path.parent)
-                Files.write(path, source.toByteArray(StandardCharsets.UTF_8), StandardOpenOption.CREATE)
+                Files.copy(source(), path, StandardCopyOption.REPLACE_EXISTING)
 
                 val processedSource = processedSources[unitName] ?: source
                 val processedPath = processedTmpDir.resolve(unitName)
                 Files.createDirectories(processedPath.parent)
-                Files.write(processedPath, processedSource.toByteArray(), StandardOpenOption.CREATE)
+                Files.copy(processedSource(), processedPath, StandardCopyOption.REPLACE_EXISTING)
             }
 
             val config = CompilerConfiguration()
@@ -95,7 +96,7 @@ class Transformer(private val map: MappingSet) {
             val project = environment.project as MockProject
             val psiManager = PsiManager.getInstance(project)
             val vfs = VirtualFileManager.getInstance().getFileSystem(StandardFileSystems.FILE_PROTOCOL) as CoreLocalFileSystem
-            val virtualFiles = sources.mapValues { vfs.findFileByIoFile(tmpDir.resolve(it.key).toFile())!! }
+            val virtualFiles = sources.entries.flatMap { entry -> entry.value.map { it.key to vfs.findFileByIoFile(tmpDir.resolve(entry.key.fileName).resolve(it.key).toFile())!! } }.toMap()
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
@@ -112,12 +113,14 @@ class Transformer(private val map: MappingSet) {
             val patterns = patternAnnotation?.let { annotationFQN ->
                 val patterns = PsiPatterns(annotationFQN)
                 val annotationName = annotationFQN.substring(annotationFQN.lastIndexOf('.') + 1)
-                for ((unitName, source) in sources) {
+                for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
+                    val unitName = unit.key
+                    val source = unit.value().readBytes().decodeToString()
                     if (!source.contains(annotationName)) continue
                     try {
-                        val patternFile = vfs.findFileByIoFile(tmpDir.resolve(unitName).toFile())!!
+                        val patternFile = vfs.findFileByIoFile(tmpDir.resolve(root.fileName).resolve(unitName).toFile())!!
                         val patternPsiFile = psiManager.findFile(patternFile)!!
-                        patterns.read(patternPsiFile, processedSources[unitName]!!)
+                        patterns.read(patternPsiFile, processedSources[unitName]!!().readBytes().decodeToString())
                     } catch (e: Exception) {
                         throw RuntimeException("Failed to read patterns from file \"$unitName\".", e)
                     }
@@ -131,23 +134,29 @@ class Transformer(private val map: MappingSet) {
                 null
             }
 
-            val results = HashMap<String, Pair<String, List<Pair<Int, String>>>>()
-            for (name in sources.keys) {
-                val file = vfs.findFileByIoFile(tmpDir.resolve(name).toFile())!!
+            val results = mutableMapOf<Pair<Path, String>, List<Pair<Int, String>>>()
+            for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
+                val unitName = unit.key
+                val file = vfs.findFileByIoFile(tmpDir.resolve(root.fileName).resolve(unitName).toFile())!!
                 val psiFile = psiManager.findFile(file)!!
 
                 var (text, errors) = try {
                     PsiMapper(map, remappedEnv?.project, psiFile, analysis.bindingContext, patterns).remapFile()
                 } catch (e: Exception) {
-                    throw RuntimeException("Failed to map file \"$name\".", e)
+                    throw RuntimeException("Failed to map file \"$unitName\".", e)
                 }
 
                 if (autoImports != null && "/* remap: no-manage-imports */" !in text) {
-                    val processedText = processedSources[name] ?: text
+                    val processedText = processedSources[unitName]?.let { it().readBytes().decodeToString() } ?: text
                     text = autoImports.apply(psiFile, text, processedText)
                 }
 
-                results[name] = text to errors
+                // write text to output path
+                writer(root, unitName).use { os ->
+                    os.write(text.toByteArray(StandardCharsets.UTF_8))
+                }
+
+                results[root to unitName] = errors
             }
             return results
         } finally {
@@ -191,49 +200,41 @@ class Transformer(private val map: MappingSet) {
 
     companion object {
 
+        // <mappings.srg> <classpath> <inputFolders> <outputFolders>
         @Throws(IOException::class)
         @JvmStatic
         fun main(args: Array<String>) {
-            val mappings: MappingSet = if (args[0].isEmpty()) {
-                MappingSet.create()
-            } else {
-                LegacyMapping.readMappingSet(File(args[0]).toPath(), args[1] == "true")
-            }
+            val mappings: MappingSet = MappingFormats.SRG.read(File(args[0]).toPath());
+            val classpath = args[1].split(File.pathSeparatorChar)
+            val inputs = args[2].split(File.pathSeparatorChar).map { File(it).toPath() }
+            val outputs = args[3].split(File.pathSeparatorChar).map { File(it).toPath() }
             val transformer = Transformer(mappings)
 
-            val reader = BufferedReader(InputStreamReader(System.`in`))
+            transformer.classpath = classpath.toTypedArray()
 
-            transformer.classpath = (1..Integer.parseInt(args[2])).map { reader.readLine() }.toTypedArray()
-
-            val sources = mutableMapOf<String, String>()
-            while (true) {
-                val name = reader.readLine()
-                if (name == null || name.isEmpty()) {
-                    break
-                }
-
-                val lines = arrayOfNulls<String>(Integer.parseInt(reader.readLine()))
-                for (i in lines.indices) {
-                    lines[i] = reader.readLine()
-                }
-                val source = lines.joinToString("\n")
-
-                sources[name] = source
+            val sources = inputs.associateWith { root ->
+                // walk the directory and find all .java or .kt files
+                Files.walk(root)
+                    .filter { Files.isRegularFile(it) }
+                    .filter { it.toString().endsWith(".java") || it.toString().endsWith(".kt") }
+                    .map { it.relativize(root).toString() to ({ Files.newInputStream(it) } as (() -> InputStream)) }
+                    .collect(Collectors.toList()).toMap()
             }
 
-            val results = transformer.remap(sources)
-
-            for (name in sources.keys) {
-                println(name)
-                val lines = results.getValue(name).first.split("\n").dropLastWhile { it.isEmpty() }.toTypedArray()
-                println(lines.size)
-                for (line in lines) {
-                    println(line)
-                }
+            val results = transformer.remap(sources) { root, unit ->
+                val output = outputs[inputs.indexOf(root)].resolve(unit)
+                Files.createDirectories(output.parent)
+                Files.newOutputStream(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
 
-            if (results.any { it.value.second.isNotEmpty() }) {
-                exitProcess(1)
+            for ((root, unitName) in sources.entries.flatMap { entry -> entry.value.keys.map { entry.key to it } }) {
+                val errors = results[root to unitName]!!
+                if (errors.isNotEmpty()) {
+                    println("Errors encountered remapping: ${root.fileName}/$unitName")
+                    for ((line, message) in errors) {
+                        println("    $line: $message")
+                    }
+                }
             }
         }
     }

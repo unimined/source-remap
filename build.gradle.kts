@@ -5,12 +5,31 @@ plugins {
     `maven-publish`
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+base {
+    archivesName.set("source-remap")
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    if (JavaVersion.current().isJava9Compatible) {
+        options.release.set(8)
+    }
+}
+
 tasks.withType<KotlinCompile>().configureEach {
     kotlinOptions.jvmTarget = "1.8"
 }
 
-group = "com.github.replaymod"
-version = "SNAPSHOT"
+group = "xyz.wagyourtail.unimined"
+version = "1.0.0"
+
+base {
+    archivesName.set("source-remap")
+}
 
 repositories {
     mavenCentral()
@@ -37,11 +56,21 @@ dependencies {
     testRuntimeOnly("org.spongepowered:mixin:0.8.4")
 }
 
-tasks.named<Jar>("jar") {
-    archiveBaseName.set("remap")
-}
-
 publishing {
+    repositories {
+        maven {
+            name = "WagYourMaven"
+            url = if (project.hasProperty("version_snapshot")) {
+                project.uri("https://maven.wagyourtail.xyz/snapshots/")
+            } else {
+                project.uri("https://maven.wagyourtail.xyz/releases/")
+            }
+            credentials {
+                username = project.findProperty("mvn.user") as String? ?: System.getenv("USERNAME")
+                password = project.findProperty("mvn.key") as String? ?: System.getenv("TOKEN")
+            }
+        }
+    }
     publications {
         create("maven", MavenPublication::class) {
             from(components["java"])

@@ -3,8 +3,15 @@ package com.replaymod.gradle.remap.imports
 import com.replaymod.gradle.remap.util.TestData
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.StringBufferInputStream
+import java.io.StringReader
+import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
 
 class TestJavaAutoImports {
+
     @Test
     fun `should remove unused imports`() {
         TestData.remap("""
@@ -91,10 +98,19 @@ class TestJavaAutoImports {
             class Test extends Sample {
             }
         """.trimIndent()
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
         TestData.transformer.remap(mapOf(
-            "test.java" to original,
-            "my/Sample.java" to "package my; public class Sample {}"
-        ))["test.java"]!!.first shouldBe """
+            path to mapOf(
+                "test.java" to { original.byteInputStream() },
+                "my/Sample.java" to { "package my; public class Sample {}".byteInputStream() }
+            )
+        )) { _, unitName ->
+            outputs[unitName] = ByteArrayOutputStream()
+            outputs[unitName]!!
+        }
+
+        outputs["test.java"]!!.toString() shouldBe """
             package test;
             
             import my.Sample;
@@ -303,10 +319,18 @@ class TestJavaAutoImports {
                 { conflictingField.method(); }
             }
         """.trimIndent()
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
         TestData.transformer.remap(mapOf(
-            "test/Test.java" to content,
-            "c/conflictingField.java" to "package c; public class conflictingField {}"
-        ))["test/Test.java"]!!.first shouldBe """
+            path to mapOf(
+            "test/Test.java" to { content.byteInputStream() },
+            "c/conflictingField.java" to { "package c; public class conflictingField {}".byteInputStream() }
+        ))) { _, unitName ->
+            outputs[unitName] = ByteArrayOutputStream()
+            outputs[unitName]!!
+        }
+
+        outputs["test/Test.java"]!!.toString() shouldBe """
             package test;
             
             import b.pkg.B;

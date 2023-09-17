@@ -3,6 +3,7 @@ package com.replaymod.gradle.remap.util
 import com.replaymod.gradle.remap.Transformer
 import com.replaymod.gradle.remap.legacy.LegacyMappingSetModelFactory
 import org.cadixdev.lorenz.MappingSet
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URL
 import java.nio.file.Paths
@@ -59,14 +60,43 @@ object TestData {
         remap(fileName, content, "", "")
     fun remap(content: String, patternsBefore: String, patternsAfter: String): String =
         remap("test.java", content, patternsBefore, patternsAfter)
-    fun remap(fileName: String, content: String, patternsBefore: String, patternsAfter: String): String = transformer.remap(mapOf(
-        fileName to content,
-        "pattern.java" to "class Patterns {\n$patternsBefore\n}",
-    ), mapOf(
-        "pattern.java" to "class Patterns {\n$patternsAfter\n}",
-    ))[fileName]!!.first
-    fun remapWithErrors(content: String) = transformer.remap(mapOf("test.java" to content))["test.java"]!!
+    fun remap(fileName: String, content: String, patternsBefore: String, patternsAfter: String): String {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        transformer.remap(mapOf(
+            path to mapOf(
+                fileName to { content.byteInputStream() },
+                "pattern.java" to { "class Patterns {\n$patternsBefore\n}".byteInputStream() },
+            )
+        ), mapOf(
+            "pattern.java" to { "class Patterns {\n$patternsAfter\n}".byteInputStream() },
+        )) {
+            _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }
+        return outputs[fileName]!!.toString()
+    }
+    fun remapWithErrors(content: String): Pair<String, List<Pair<Int, String>>> {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        val errors = transformer.remap(mapOf(path to mapOf("test.java" to { content.byteInputStream() }))) { _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() } }[path to "test.java"]!!
+        return outputs["test.java"]!!.toString() to errors
+    }
 
-    fun remapKt(content: String): String = transformer.remap(mapOf("test.kt" to content))["test.kt"]!!.first
-    fun remapKtWithErrors(content: String) = transformer.remap(mapOf("test.kt" to content))["test.kt"]!!
+    fun remapKt(content: String): String {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        transformer.remap(mapOf(path to mapOf("test.kt" to { content.byteInputStream() }))) {
+            _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }
+        return outputs["test.kt"]!!.toString()
+    }
+
+    fun remapKtWithErrors(content: String): Pair<String, List<Pair<Int, String>>> {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        val errors = transformer.remap(mapOf(path to mapOf("test.kt" to { content.byteInputStream() }))) {
+            _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }[path to "test.kt"]!!
+        return outputs["test.kt"]!!.toString() to errors
+    }
 }
