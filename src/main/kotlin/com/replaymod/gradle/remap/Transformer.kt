@@ -29,7 +29,6 @@ import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.utils.PathUtil
 import java.io.*
-import java.lang.Exception
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,7 +36,6 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.*
 import java.util.stream.Collectors
-import kotlin.system.exitProcess
 
 class Transformer(private val map: MappingSet) {
     var classpath: Array<String>? = null
@@ -73,10 +71,10 @@ class Transformer(private val map: MappingSet) {
             val config = CompilerConfiguration()
             config.put(CommonConfigurationKeys.MODULE_NAME, "main")
             jdkHome?.let {config.setupJdk(it) }
-            config.add<ContentRoot>(CLIConfigurationKeys.CONTENT_ROOTS, JavaSourceRoot(tmpDir.toFile(), ""))
-            config.add<ContentRoot>(CLIConfigurationKeys.CONTENT_ROOTS, KotlinSourceRoot(tmpDir.toAbsolutePath().toString(), false))
-            config.addAll<ContentRoot>(CLIConfigurationKeys.CONTENT_ROOTS, classpath!!.map { JvmClasspathRoot(File(it)) })
-            config.put<MessageCollector>(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> JavaSourceRoot(tmpDir.resolve(root.fileName).toFile(), "") })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root ->  KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath!!.map { JvmClasspathRoot(File(it)) })
+            config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
 
             // Our PsiMapper only works with the PSI tree elements, not with the faster (but kotlin-specific) classes
             config.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
@@ -217,7 +215,7 @@ class Transformer(private val map: MappingSet) {
                 Files.walk(root)
                     .filter { Files.isRegularFile(it) }
                     .filter { it.toString().endsWith(".java") || it.toString().endsWith(".kt") }
-                    .map { it.relativize(root).toString() to ({ Files.newInputStream(it) } as (() -> InputStream)) }
+                    .map { root.relativize(it).toString() to ({ Files.newInputStream(it) } as (() -> InputStream)) }
                     .collect(Collectors.toList()).toMap()
             }
 
