@@ -42,23 +42,31 @@ internal class PsiMapper(
 ) {
     private val mixinMappings = mutableMapOf<String, ClassMapping<*, *>>()
     private val errors = mutableListOf<Pair<Int, String>>()
-    private val changes = TreeMap<TextRange, String>(compareBy<TextRange> { it.startOffset }.thenBy { it.endOffset })
+    private val ambiguousImports = mutableMapOf<String, MutableSet<String>>()
+    private val ambiguousImportStatics = mutableMapOf<String, MutableSet<String>>()
+    private val changes = TreeMap<TextRange, () -> String>(compareBy<TextRange> { it.startOffset }.thenBy { it.endOffset })
 
     private fun error(at: PsiElement, message: String) {
         val line = StringUtil.offsetToLineNumber(file.text, at.textOffset)
         errors.add(Pair(line, message))
     }
 
-    private fun replace(e: PsiElement, with: String) = replace(e.textRange, with)
-    private fun replace(textRange: TextRange, with: String) {
+    private fun replace(e: PsiElement, with: () -> String) = replace(e.textRange, with)
+    private fun replace(textRange: TextRange, with: () -> String) {
         changes.compute(textRange) { _, replacement ->
             if (replacement != null) {
-                replacement + with
+                {
+                    replacement() + with()
+                }
             } else {
                 with
             }
         }
     }
+
+    private fun replace(e: PsiElement, with: String) = replace(e.textRange, with)
+
+    private fun replace(textRange: TextRange, with: String) = replace(textRange) { with }
 
     private fun replaceIdentifier(parent: PsiElement, with: String) {
         var child = parent.firstChild
@@ -83,7 +91,7 @@ internal class PsiMapper(
     private fun getResult(text: String): Pair<String, List<Pair<Int, String>>> {
         var result = text
         for ((key, value) in changes.descendingMap()) {
-            result = key.replace(result, value)
+            result = key.replace(result, value())
         }
         return Pair(result, errors)
     }
@@ -102,8 +110,11 @@ internal class PsiMapper(
         if (mapping == null) {
             mapping = map.findClassMapping(name)
         }
-        if (mapping == null) return
-        val mapped = mapping.findFieldMapping(fieldName)?.deobfuscatedName
+        val mapped = mapping?.findFieldMapping(fieldName)?.deobfuscatedName
+        val ref = "${field.containingClass?.qualifiedName}.$fieldName"
+        if (!expr.text.contains(".") && field.containingClass != null && ambiguousImportStatics.contains(ref)) {
+            ambiguousImportStatics[ref]!!.add(mapped ?: fieldName)
+        }
         if (mapped == null || mapped == fieldName) return
         replaceIdentifier(expr, mapped)
 
@@ -127,6 +138,10 @@ internal class PsiMapper(
 
         val mapping = findMapping(method)
         val mapped = mapping?.deobfuscatedName
+        val ref = "${method.containingClass?.qualifiedName}.${method.name}"
+        if (!expr.text.contains(".") && method.containingClass != null && ambiguousImportStatics.contains(ref)) {
+            ambiguousImportStatics[ref]!!.add(mapped ?: method.name)
+        }
         if (mapped != null && mapped != method.name) {
             val maybeGetter = propertyNameByGetMethodName(Name.identifier(mapped))
             if (maybeGetter != null // must have getter-style name
@@ -356,10 +371,14 @@ internal class PsiMapper(
     private fun map(expr: PsiElement, resolved: PsiQualifiedNamedElement) {
         val name = resolved.qualifiedName ?: return
         val dollarName = (if (resolved is PsiClass) resolved.dollarQualifiedName else name) ?: return
-        val mapping = map.findClassMapping(dollarName) ?: return
-        var mapped = mapping.fullDeobfuscatedName
-        if (mapped == dollarName) return
-        mapped = mapped.replace('/', '.').replace('$', '.')
+        val mapping = map.findClassMapping(dollarName)
+        var mapped = mapping?.fullDeobfuscatedName
+        val pkg = dollarName.substringBeforeLast(".")
+        mapped = mapped?.replace('/', '.')?.replace('$', '.')
+        if (ambiguousImports.contains(pkg)) {
+            ambiguousImports[pkg]!!.add(mapped ?: name)
+        }
+        if (mapped == name || mapped == null) return
 
         if (expr.text == name) {
             replace(expr, mapped)
@@ -688,6 +707,57 @@ internal class PsiMapper(
                 }
                 super.visitReferenceElement(reference)
             }
+
+            val wildcardMatcher = Regex(".+\\.\\*$")
+
+            override fun visitImportStatement(import: PsiImportStatement) {
+                if (valid(import)) {
+                    val betterText = import.text.removePrefix("import").replace(Regex("\\s+"), "").removeSuffix(";")
+                    if (wildcardMatcher.matches(betterText)) {
+                        if (ambiguousImports.contains(betterText.removeSuffix(".*"))) {
+                            replace(import.textRange, "")
+                        } else {
+                            ambiguousImports[betterText.removeSuffix(".*")] = mutableSetOf()
+                            replace(import) {
+                                val imports = ambiguousImports[betterText.removeSuffix(".*")]!!.toList()
+                                buildString {
+                                    for (i in imports.indices) {
+                                        append("import ")
+                                        append(imports[i])
+                                        append("; ")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                super.visitImportStatement(import)
+            }
+
+            override fun visitImportStaticReferenceElement(importStatic: PsiImportStaticReferenceElement) {
+                if (valid(importStatic)) {
+                    val betterText = importStatic.text.replace(Regex("\\s+"), "").removeSuffix(";")
+                    if (!wildcardMatcher.matches(betterText)) {
+                        if (ambiguousImportStatics.contains(betterText)) {
+                            replace(importStatic.parent.textRange, "")
+                        } else {
+                            ambiguousImportStatics[betterText] = mutableSetOf()
+                            replace(importStatic.parent) {
+                                val imports = ambiguousImportStatics[betterText]!!.toList()
+                                buildString {
+                                    for (i in imports.indices) {
+                                        append("import static ")
+                                        append(betterText.substringBeforeLast(".") + "." + imports[i])
+                                        append("; ")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                super.visitImportStaticReferenceElement(importStatic)
+            }
+
         })
 
         if (file is KtFile) {
