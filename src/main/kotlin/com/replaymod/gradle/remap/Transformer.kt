@@ -29,13 +29,13 @@ import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.utils.PathUtil
 import java.io.*
+import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.nio.file.StandardOpenOption
+import java.nio.file.*
 import java.util.*
 import java.util.stream.Collectors
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
 
 class Transformer(private val map: MappingSet) {
     var classpath: Array<String>? = null
@@ -196,13 +196,22 @@ class Transformer(private val map: MappingSet) {
         return environment
     }
 
+
     companion object {
 
-        // <mappings.srg> <classpath> <inputFolders> <outputFolders>
+        fun scanFolder(folder: Path): Map<String, () -> InputStream> {
+            return Files.walk(folder)
+                .filter { Files.isRegularFile(it) }
+                .filter { it.toString().endsWith(".java") || it.toString().endsWith(".kt") }
+                .map { it.toString() to { Files.newInputStream(it) } }
+                .collect(Collectors.toList()).toMap()
+        }
+
+        // <mappings.srg> <classpath> <inputPaths> <outputPaths>
         @Throws(IOException::class)
         @JvmStatic
         fun main(args: Array<String>) {
-            val mappings: MappingSet = MappingFormats.SRG.read(File(args[0]).toPath());
+            val mappings: MappingSet = MappingFormats.SRG.read(File(args[0]).toPath())
             val classpath = args[1].split(File.pathSeparatorChar)
             val inputs = args[2].split(File.pathSeparatorChar).map { File(it).toPath() }
             val outputs = args[3].split(File.pathSeparatorChar).map { File(it).toPath() }
@@ -210,31 +219,99 @@ class Transformer(private val map: MappingSet) {
 
             transformer.classpath = classpath.toTypedArray()
 
-            val sources = inputs.associateWith { root ->
-                // walk the directory and find all .java or .kt files
-                Files.walk(root)
-                    .filter { Files.isRegularFile(it) }
-                    .filter { it.toString().endsWith(".java") || it.toString().endsWith(".kt") }
-                    .map { root.relativize(it).toString() to ({ Files.newInputStream(it) } as (() -> InputStream)) }
-                    .collect(Collectors.toList()).toMap()
-            }
+            val closeLater = mutableListOf<Closeable>()
 
-            val results = transformer.remap(sources) { root, unit ->
-                val output = outputs[inputs.indexOf(root)].resolve(unit)
-                Files.createDirectories(output.parent)
-                Files.newOutputStream(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-            }
+            try {
 
-            for ((root, unitName) in sources.entries.flatMap { entry -> entry.value.keys.map { entry.key to it } }) {
-                val errors = results[root to unitName]!!
-                if (errors.isNotEmpty()) {
-                    println("Errors encountered remapping: ${root.fileName}/$unitName")
-                    for ((line, message) in errors) {
-                        println("    $line: $message")
+                val sources: Map<Path, Map<String, () -> InputStream>> = inputs.associateWith { root ->
+                    if (Files.isDirectory(root)) {
+                        scanFolder(root)
+                    } else if (Files.isRegularFile(root)) {
+                        if (root.toString().endsWith(".java") || root.toString().endsWith(".kt")) {
+                            mapOf(root.fileName.toString() to { Files.newInputStream(root) })
+                        } else if (root.toString().endsWith(".jar") || root.toString().endsWith(".zip")) {
+                            val jar = root.toFile()
+                            val zip = ZipFile(jar)
+                            closeLater.add(zip)
+                            zip.entries().asSequence().filter { !it.isDirectory && (it.name.endsWith(".java") || it.name.endsWith(".kt")) }.associate { entry ->
+                                entry.name to { zip.getInputStream(entry) }
+                            }
+                        } else {
+                            throw IllegalArgumentException("Input root must be a directory, jar, or source file. unsupported type: ${root.fileName}")
+                        }
+                    } else {
+                        throw IllegalArgumentException("Input root must be a directory, jar, or source file. unsupported type: ${root.fileName}")
                     }
+                }
+
+                // delete existing output files
+                for (output in outputs) {
+                    if (Files.isDirectory(output)) {
+                        Files.walk(output).sorted(Comparator.reverseOrder()).forEach { Files.delete(it) }
+                    } else if (Files.isRegularFile(output)) {
+                        Files.delete(output)
+                    }
+                }
+
+                val results = transformer.remap(sources) { root, unit ->
+                    if (root.toString().endsWith(".jar") || root.toString().endsWith(".zip")) {
+                        val outputPath = outputs[inputs.indexOf(root)]
+                        if (outputPath.toString().endsWith(".jar") || outputPath.toString().endsWith(".zip")) {
+                            val jar = outputPath.toFile()
+                            if (!jar.exists()) {
+                                val zos = ZipOutputStream(FileOutputStream(jar))
+                                zos.close()
+                            }
+                            val fs = outputPath.openZipFileSystem(mapOf("create" to false))
+                            closeLater.add(fs)
+                            Files.newOutputStream(
+                                fs.getPath(unit),
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.TRUNCATE_EXISTING
+                            )
+                        } else if (outputPath.endsWith(".java") || outputPath.endsWith(".kt")) {
+                            Files.newOutputStream(outputPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                        } else {
+                            Files.newOutputStream(
+                                outputPath.resolve(unit),
+                                StandardOpenOption.CREATE,
+                                StandardOpenOption.TRUNCATE_EXISTING
+                            )
+                        }
+
+
+                    }
+                    val output = outputs[inputs.indexOf(root)].resolve(unit)
+                    Files.createDirectories(output.parent)
+                    Files.newOutputStream(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
+                }
+
+                for ((root, unitName) in sources.entries.flatMap { entry -> entry.value.keys.map { entry.key to it } }) {
+                    val errors = results[root to unitName]!!
+                    if (errors.isNotEmpty()) {
+                        println("Errors encountered remapping: ${root.fileName}/$unitName")
+                        for ((line, message) in errors) {
+                            println("    $line: $message")
+                        }
+                    }
+                }
+
+            } finally {
+                for (closeable in closeLater) {
+                    closeable.close()
                 }
             }
         }
+
+        private fun Path.openZipFileSystem(args: Map<String, *> = mapOf<String, Any>()): FileSystem {
+            if (!Files.exists(this) && args["create"] == true) {
+                ZipOutputStream(Files.newOutputStream(this)).use { stream ->
+                    stream.closeEntry()
+                }
+            }
+            return FileSystems.newFileSystem(URI.create("jar:${toUri()}"), args, null)
+        }
+
     }
 
 }
