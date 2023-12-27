@@ -32,7 +32,7 @@ tasks.withType<KotlinCompile>().configureEach {
 }
 
 group = "xyz.wagyourtail.unimined"
-version = "1.0.2"
+version = "1.0.3"
 version = if (project.hasProperty("version_snapshot")) version as String + "-SNAPSHOT" else version as String
 
 base {
@@ -57,7 +57,9 @@ dependencies {
     shadow(api("org.cadixdev:lorenz:0.5.0")!!)
     runtimeOnly("net.java.dev.jna:jna:5.10.0") // don't strictly need this but IDEA spams log without
 
+    // CLI
     shadow(implementation("net.sourceforge.argparse4j:argparse4j:0.9.0")!!)
+    shadow(implementation("net.fabricmc:mapping-io:0.5.0")!!)
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.7.1")
     testImplementation("io.kotest:kotest-assertions-core:4.6.3")

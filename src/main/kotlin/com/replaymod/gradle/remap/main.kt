@@ -1,5 +1,9 @@
 package com.replaymod.gradle.remap
 
+import net.fabricmc.mappingio.MappedElementKind
+import net.fabricmc.mappingio.MappingReader
+import net.fabricmc.mappingio.MappingVisitor
+import net.fabricmc.mappingio.format.MappingFormat
 import net.sourceforge.argparse4j.ArgumentParsers
 import net.sourceforge.argparse4j.annotation.Arg
 import net.sourceforge.argparse4j.ext.java7.PathArgumentType
@@ -9,11 +13,11 @@ import net.sourceforge.argparse4j.inf.ArgumentParser
 import net.sourceforge.argparse4j.inf.ArgumentParserException
 import net.sourceforge.argparse4j.inf.ArgumentType
 import org.cadixdev.lorenz.MappingSet
-import org.cadixdev.lorenz.io.MappingFormats
-import java.io.Closeable
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
+import org.cadixdev.lorenz.model.ClassMapping
+import org.cadixdev.lorenz.model.FieldMapping
+import org.cadixdev.lorenz.model.MethodMapping
+import org.cadixdev.lorenz.model.MethodParameterMapping
+import java.io.*
 import java.net.URI
 import java.nio.file.*
 import java.util.stream.Collectors
@@ -40,27 +44,95 @@ private object PathListArgumentType : ArgumentType<List<Path>> {
     }
 }
 
-private object MappingSetArgumentType : ArgumentType<MappingSet> {
-    private val formatByExtension = mapOf(
-        "srg" to MappingFormats.SRG,
-        "csrg" to MappingFormats.CSRG,
-        "tsrg" to MappingFormats.TSRG
-    )
-    private val inner = PathArgumentType().verifyIsFile().verifyCanRead()
+private class MappingsReadException(message: String) : Exception(message)
 
-    override fun convert(parser: ArgumentParser, arg: Argument, value: String): MappingSet {
-        val extension = value.substringAfterLast('.', "").lowercase()
-        val format = formatByExtension[extension] ?: throw ArgumentParserException(
-            "Unsupported mapping extension .$extension. Supported: ${formatByExtension.keys.joinToString { ".$it" }}.",
-            parser, arg
-        )
-        val path = inner.convert(parser, arg, value)
-        try {
-            return format.read(path)
-        } catch (e: Exception) {
-            throw ArgumentParserException(e.message, e, parser, arg)
+private fun readMappings(path: Path, targetNamespace: String?): MappingSet {
+    val result = MappingSet.create()
+    MappingReader.read(path, object : MappingVisitor {
+        var targetNs: Int = 0
+
+        var currentClass: ClassMapping<*, *>? = null
+        var currentField: FieldMapping? = null
+        var currentMethod: MethodMapping? = null
+        var currentParameter: MethodParameterMapping? = null
+
+        override fun visitNamespaces(srcNamespace: String, dstNamespaces: List<String>) {
+            if (targetNamespace == null) {
+                if (dstNamespaces.size != 1) {
+                    throw MappingsReadException(
+                        "Cannot infer target namespace with multiple possibilities: ${dstNamespaces.joinToString()}"
+                    )
+                }
+                return
+            }
+            targetNs = dstNamespaces.indexOf(targetNamespace)
+            if (targetNs == -1) {
+                throw MappingsReadException("Could not find target namespace in: ${dstNamespaces.joinToString()}")
+            }
         }
-    }
+
+        override fun visitClass(srcName: String): Boolean {
+            currentClass = result.getOrCreateClassMapping(srcName)
+            currentField = null
+            currentMethod = null
+            currentParameter = null
+            return true
+        }
+
+        override fun visitField(srcName: String, srcDesc: String?): Boolean {
+            if (srcDesc == null) {
+                throw MappingsReadException("No source descriptor found for field ${currentClass?.deobfuscatedName}.$srcName")
+            }
+            currentField = currentClass?.getOrCreateFieldMapping(srcName, srcDesc)
+                ?: throw MappingsReadException("No owning class found for field $srcName:$srcDesc")
+            currentMethod = null
+            currentParameter = null
+            return true
+        }
+
+        override fun visitMethod(srcName: String, srcDesc: String?): Boolean {
+            if (srcDesc == null) {
+                throw MappingsReadException("No source descriptor found for method ${currentClass?.deobfuscatedName}.$srcName")
+            }
+            currentField = null
+            currentMethod = currentClass?.getOrCreateMethodMapping(srcName, srcDesc)
+                ?: throw MappingsReadException("No owning class found for field $srcName$srcDesc")
+            currentParameter = null
+            return true
+        }
+
+        override fun visitMethodArg(argPosition: Int, lvIndex: Int, srcName: String?): Boolean {
+            currentParameter = currentMethod?.getOrCreateParameterMapping(lvIndex)
+                ?: throw MappingsReadException("No owning method found for parameter $srcName at index $lvIndex")
+            return true
+        }
+
+        override fun visitDstName(targetKind: MappedElementKind, namespace: Int, name: String) {
+            if (namespace != targetNs) return
+            when (targetKind) {
+                MappedElementKind.CLASS -> currentClass?.setDeobfuscatedName(name)
+                    ?: throw MappingsReadException("No source name found for class $name")
+                MappedElementKind.FIELD -> currentField?.setDeobfuscatedName(name)
+                    ?: throw MappingsReadException("No source name found for field ${currentClass?.deobfuscatedName}.$name")
+                MappedElementKind.METHOD -> currentMethod?.setDeobfuscatedName(name)
+                    ?: throw MappingsReadException("No source name found for method ${currentClass?.deobfuscatedName}.$name")
+                MappedElementKind.METHOD_ARG -> currentParameter?.setDeobfuscatedName(name)
+                    ?: throw MappingsReadException(
+                        "No source index found for parameter " +
+                            "${currentClass?.deobfuscatedName}.${currentMethod?.deobfuscatedName}.$name"
+                    )
+                MappedElementKind.METHOD_VAR -> Unit // Not supported by lorenz
+            }
+        }
+
+        override fun visitMethodVar(
+            lvtRowIndex: Int, lvIndex: Int, startOpIdx: Int, endOpIdx: Int, srcName: String?
+        ) = false // Not supported by lorenz
+
+        // No need. Maybe if this was called for ProGuard we'd print it.
+        override fun visitComment(targetKind: MappedElementKind, comment: String) = Unit
+    })
+    return result
 }
 
 @Suppress("OPT_IN_IS_NOT_ENABLED")
@@ -69,30 +141,46 @@ fun main(vararg args: String) {
     val parser = ArgumentParsers.newFor("source-remap")
         .fromFilePrefix("@")
         .build()
-        .defaultHelp(true)
-        .description("Remaps Java/Kotlin sources")
+        .description("Remaps Java/Kotlin source files, including Mixins")
     parser.addArgument("-cp", "--classpath")
+        .help("The context classpath")
         .type(PathListArgumentType)
         .action(Arguments.append())
         .setDefault(mutableListOf<List<Path>>())
+    parser.addArgument("-m", "--mappings")
+        .help("A mappings file. The supported formats are: ${MappingFormat.values().joinToString { it.name }}.")
+        .type(PathArgumentType().verifyExists())
+        .action(Arguments.append())
+        .required(true)
+    parser.addArgument("-t", "--target-namespace")
+        .help("The target namespace to map to. Useful for tiny mappings where multiple potential targets could exist.")
+        .metavar("NAMESPACE")
+    parser.addArgument("--reverse")
+        .help("Use reverse mappings. This makes -t specify the source mappings.")
+        .action(Arguments.storeTrue())
     parser.addArgument("-r", "--remap")
+        .help("The jars/directories to remap. If a specified input doesn't exist, it will be skipped.")
         .type(PathArgumentType())
         .nargs(2)
         .metavar("INPUT", "OUTPUT")
         .action(Arguments.append())
         .required(true)
-    parser.addArgument("mappings")
-        .type(MappingSetArgumentType)
 
     val parsedArgs = object {
         @set:Arg(dest = "classpath")
         var classpath: List<List<Path>> = listOf()
 
+        @set:Arg(dest = "mappings")
+        var mappings: List<Path> = listOf()
+
+        @set:Arg(dest = "reverse")
+        var reverse: Boolean = false
+
+        @set:Arg(dest = "target_namespace")
+        var targetNamespace: String? = null
+
         @set:Arg(dest = "remap")
         var remap: List<List<Path>> = listOf()
-
-        @set:Arg(dest = "mappings")
-        var mappings: MappingSet = MappingSet.create()
     }
 
     try {
@@ -103,7 +191,21 @@ fun main(vararg args: String) {
     }
     val classpath = parsedArgs.classpath.asSequence().flatMap { it }.toSet()
     val remap = parsedArgs.remap.asSequence().filter { Files.exists(it[0]) }.associate { it[0] to it[1] }
-    val mappings = parsedArgs.mappings
+
+    var mappings = try {
+        parsedArgs.mappings.asSequence()
+            .map { readMappings(it, parsedArgs.targetNamespace) }
+            .reduce(MappingSet::merge)
+    } catch (e: MappingsReadException) {
+        System.err.println(e.message)
+        exitProcess(1)
+    } catch (e: IOException) {
+        System.err.println("Failed to read mappings: ${e.message}")
+        exitProcess(1)
+    }
+    if (parsedArgs.reverse) {
+        mappings = mappings.reverse()
+    }
 
     println("Running remapper with classpath:")
     println(classpath.joinToString(File.pathSeparator))
