@@ -142,14 +142,7 @@ publishing {
     }
     publications {
         create("maven", MavenPublication::class) {
-            groupId = project.group as String
-            artifactId = base.archivesName.get()
-            version = project.version as String
-
-            artifact(project.tasks.jar) {}
-            artifact(project.tasks.shadowJar) {
-                classifier = "all"
-            }
+            from(components["java"])
         }
     }
 }
