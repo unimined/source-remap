@@ -1,6 +1,7 @@
 package com.replaymod.gradle.remap
 
 import net.fabricmc.mappingio.MappedElementKind
+import net.fabricmc.mappingio.MappingFlag
 import net.fabricmc.mappingio.MappingReader
 import net.fabricmc.mappingio.MappingVisitor
 import net.fabricmc.mappingio.format.MappingFormat
@@ -56,6 +57,8 @@ private fun readMappings(path: Path, targetNamespace: String?): MappingSet {
         var currentMethod: MethodMapping? = null
         var currentParameter: MethodParameterMapping? = null
 
+        override fun getFlags() = setOf(MappingFlag.NEEDS_SRC_METHOD_DESC)
+
         override fun visitNamespaces(srcNamespace: String, dstNamespaces: List<String>) {
             if (targetNamespace == null) {
                 if (dstNamespaces.size != 1) {
@@ -80,11 +83,13 @@ private fun readMappings(path: Path, targetNamespace: String?): MappingSet {
         }
 
         override fun visitField(srcName: String, srcDesc: String?): Boolean {
-            if (srcDesc == null) {
-                throw MappingsReadException("No source descriptor found for field ${currentClass?.deobfuscatedName}.$srcName")
+            currentField = if (srcDesc != null) {
+                currentClass?.getOrCreateFieldMapping(srcName, srcDesc)
+                    ?: throw MappingsReadException("No owning class found for field $srcName:$srcDesc")
+            } else {
+                currentClass?.getOrCreateFieldMapping(srcName)
+                    ?: throw MappingsReadException("No owning class found for field $srcName")
             }
-            currentField = currentClass?.getOrCreateFieldMapping(srcName, srcDesc)
-                ?: throw MappingsReadException("No owning class found for field $srcName:$srcDesc")
             currentMethod = null
             currentParameter = null
             return true
