@@ -47,8 +47,8 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-kotlinVersion("1.5.21", isPrimaryVersion = true)
-kotlinVersion("1.6.20")
+val kotlin1521 = kotlinVersion("1.5.21", isPrimaryVersion = true)
+val kotlin1620 = kotlinVersion("1.6.20")
 
 
 dependencies {
@@ -70,6 +70,8 @@ dependencies {
 }
 
 tasks.jar {
+    from(sourceSets.main.get().output, kotlin1521.output, kotlin1620.output)
+
     manifest {
         attributes(
             "Implementation-Title" to base.archivesName.get(),
@@ -80,6 +82,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
+    from(sourceSets.main.get().output, kotlin1521.output, kotlin1620.output)
 
     configurations = listOf(
         project.configurations.shadow.get()
@@ -98,7 +101,7 @@ tasks.test {
     useJUnitPlatform()
 }
 
-fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false) {
+fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false): SourceSet {
     val name = version.replace(".", "")
 
     val sourceSet = sourceSets.create("kotlin$name")
@@ -113,10 +116,6 @@ fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false) {
         sourceSet.compileOnlyConfigurationName("org.jetbrains.kotlin:kotlin-compiler-embeddable:$version")
     }
 
-    tasks.jar {
-        from(sourceSet.output)
-    }
-
     if (!isPrimaryVersion) {
         val testTask = tasks.register("testKotlin$name", Test::class) {
             useJUnitPlatform()
@@ -125,6 +124,8 @@ fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false) {
         }
         tasks.check { dependsOn(testTask) }
     }
+
+    return sourceSet
 }
 
 publishing {
