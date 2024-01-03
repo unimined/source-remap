@@ -1,17 +1,21 @@
 package com.replaymod.gradle.remap
 
+import com.replaymod.gradle.remap.classpath.TransformedClasspath
+import com.replaymod.gradle.remap.classpath.TransformedVirtualFile
+import com.replaymod.gradle.remap.classpath.TransformedVirtualFileSystem
+import com.replaymod.gradle.remap.classpath.desynthesizeTransformer
 import org.cadixdev.lorenz.MappingSet
 import org.cadixdev.lorenz.io.MappingFormats
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
-import org.jetbrains.kotlin.cli.common.config.ContentRoot
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+import org.jetbrains.kotlin.cli.jvm.compiler.setupIdeaStandaloneExecution
 import org.jetbrains.kotlin.cli.jvm.config.JavaSourceRoot
 import org.jetbrains.kotlin.cli.jvm.config.JvmClasspathRoot
+import org.jetbrains.kotlin.cli.jvm.config.VirtualJvmClasspathRoot
 import org.jetbrains.kotlin.cli.jvm.modules.CoreJrtFileSystem
 import org.jetbrains.kotlin.com.intellij.codeInsight.CustomExceptionHandler
 import org.jetbrains.kotlin.com.intellij.mock.MockProject
@@ -21,8 +25,10 @@ import org.jetbrains.kotlin.com.intellij.openapi.extensions.Extensions
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.StandardFileSystems
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileManager
+import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileSystem
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.local.CoreLocalFileSystem
 import org.jetbrains.kotlin.com.intellij.psi.PsiManager
+import org.jetbrains.kotlin.com.intellij.util.KeyedLazyInstance
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
@@ -72,23 +78,36 @@ class Transformer(private val map: MappingSet) {
             config.put(CommonConfigurationKeys.MODULE_NAME, "main")
             jdkHome?.let {config.setupJdk(it) }
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> JavaSourceRoot(tmpDir.resolve(root.fileName).toFile(), "") })
-            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root ->  KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
-            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath!!.map { JvmClasspathRoot(File(it)) })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
             config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
 
             // Our PsiMapper only works with the PSI tree elements, not with the faster (but kotlin-specific) classes
             config.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
 
+            setupIdeaStandaloneExecution()
+            val appEnv = KotlinCoreEnvironment.getOrCreateApplicationEnvironmentForProduction(disposable, config)
+            TransformedVirtualFileSystem.applicationEnvironment = appEnv
+            TransformedVirtualFileSystem.transformers += desynthesizeTransformer
+
+            val projectEnv = KotlinCoreEnvironment.ProjectEnvironment(disposable, appEnv, config)
+
+            val transformedClasspath = TransformedClasspath(config, appEnv)
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath!!.mapNotNull {
+                val nonTransformedFile = transformedClasspath.contentRootToVirtualFile(JvmClasspathRoot(File(it)))
+                    ?: return@mapNotNull null
+                VirtualJvmClasspathRoot(TransformedVirtualFile(nonTransformedFile))
+            })
+
             val environment = KotlinCoreEnvironment.createForProduction(
-                    disposable,
-                    config,
-                    EnvironmentConfigFiles.JVM_CONFIG_FILES
+                projectEnv, config, EnvironmentConfigFiles.JVM_CONFIG_FILES
             )
             val rootArea = Extensions.getRootArea()
             synchronized(rootArea) {
                 if (!rootArea.hasExtensionPoint(CustomExceptionHandler.KEY)) {
                     rootArea.registerExtensionPoint(CustomExceptionHandler.KEY.name, CustomExceptionHandler::class.java.name, ExtensionPoint.Kind.INTERFACE)
                 }
+                rootArea.getExtensionPoint<KeyedLazyInstance<VirtualFileSystem>>("org.jetbrains.kotlin.com.intellij.virtualFileSystem")
+                    .registerExtension(TransformedVirtualFileSystem.keyedInstance, disposable)
             }
 
             val project = environment.project as MockProject
@@ -98,11 +117,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = try {
-                analyze1521(environment, ktFiles)
-            } catch (e: NoSuchMethodError) {
-                analyze1620(environment, ktFiles)
-            }
+            val analysis = analyze1620(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -188,11 +203,7 @@ class Transformer(private val map: MappingSet) {
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        try {
-            analyze1521(environment, emptyList())
-        } catch (e: NoSuchMethodError) {
-            analyze1620(environment, emptyList())
-        }
+        analyze1620(environment, emptyList())
         return environment
     }
 

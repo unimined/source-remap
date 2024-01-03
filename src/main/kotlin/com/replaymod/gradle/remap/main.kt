@@ -226,6 +226,7 @@ fun main(vararg args: String) {
 }
 
 private fun runTransformer(mappings: MappingSet, classpath: Collection<Path>, remap: Map<Path, Path>) {
+    System.setProperty("idea.use.native.fs.for.win", "false")
     val transformer = Transformer(mappings)
 
     transformer.classpath = classpath.map(Path::toString).toTypedArray()
