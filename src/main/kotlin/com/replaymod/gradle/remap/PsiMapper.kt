@@ -591,8 +591,13 @@ internal class PsiMapper(
             StringBuilder().apply { remapInternalType(internalType, this) }.toString()
 
     private fun remapInternalType(internalType: String, result: StringBuilder): ClassMapping<*, *>? {
-        if (internalType[0] == 'L') {
-            val type = internalType.substring(1, internalType.length - 1).replace('/', '.')
+        var dimensionCount = 0
+        while (internalType[dimensionCount] == '[') {
+            result.append('[')
+            dimensionCount++
+        }
+        if (internalType[dimensionCount] == 'L') {
+            val type = internalType.substring(dimensionCount + 1, internalType.length - 1).replace('/', '.')
             val mapping = map.findClassMapping(type)
             if (mapping != null) {
                 result.append('L').append(mapping.fullDeobfuscatedName).append(';')
