@@ -380,10 +380,11 @@ internal class PsiMapper(
     private fun findMapping(method: PsiMethod): MethodMapping? {
         var declaringClass: PsiClass? = method.containingClass ?: return null
         val parentQueue = ArrayDeque<PsiClass>()
+        val visited = mutableSetOf(declaringClass!!)
         parentQueue.offer(declaringClass)
         var mapping: ClassMapping<*, *>? = null
 
-        var name = declaringClass!!.qualifiedName
+        var name = declaringClass.qualifiedName
         if (name != null) {
             // If this method is declared in a mixin class, we want to consider the hierarchy of the target as well
             mapping = mixinMappings[name]
@@ -394,10 +395,22 @@ internal class PsiMapper(
             if (mapping != null && !isShadow && !isOverwrite && !isOverride) {
                 return null // otherwise, it belongs to the mixin and never gets remapped
             }
+            if (mapping != null) {
+                findPsiClass(mapping.fullObfuscatedName)?.let {
+                    if (visited.add(it)) {
+                        parentQueue.offer(it)
+                    }
+                }
+            }
         }
+
+        var signature: MethodSignature? = null
         while (true) {
             if (mapping != null) {
-                val mapped = mapping.findMethodMapping(getSignature(method))
+                if (signature == null) {
+                    signature = getSignature(method)
+                }
+                val mapped = mapping.findMethodMapping(signature)
                 if (mapped != null) {
                     return mapped
                 }
@@ -408,11 +421,13 @@ internal class PsiMapper(
                 if (declaringClass == null) return null
 
                 val superClass = declaringClass.superClass
-                if (superClass != null) {
+                if (superClass != null && visited.add(superClass)) {
                     parentQueue.offer(superClass)
                 }
-                for (anInterface in declaringClass.interfaces) {
-                    parentQueue.offer(anInterface)
+                for (intf in declaringClass.interfaces) {
+                    if (visited.add(intf)) {
+                        parentQueue.offer(intf)
+                    }
                 }
 
                 name = declaringClass.dollarQualifiedName
