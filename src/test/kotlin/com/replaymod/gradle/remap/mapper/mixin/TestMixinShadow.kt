@@ -43,4 +43,37 @@ class TestMixinShadow {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `automatically add this(dot) for conflicts with local variables`() {
+        TestData.remap("""
+            @org.spongepowered.asm.mixin.Mixin(a.pkg.A.class)
+            abstract class MixinA {
+                @org.spongepowered.asm.mixin.Shadow
+                private a.pkg.A a;
+                @org.spongepowered.asm.mixin.Shadow
+                private int aField;
+                private void test() {
+                    a = null;
+                    int bField = 0;
+                    aField = 1;
+                    bField = 1;
+                }
+            }
+        """.trimIndent()) shouldBe """
+            @org.spongepowered.asm.mixin.Mixin(b.pkg.B.class)
+            abstract class MixinA {
+                @org.spongepowered.asm.mixin.Shadow
+                private b.pkg.B b;
+                @org.spongepowered.asm.mixin.Shadow
+                private int bField;
+                private void test() {
+                    b = null;
+                    int bField = 0;
+                    this.bField = 1;
+                    bField = 1;
+                }
+            }
+        """.trimIndent()
+    }
 }

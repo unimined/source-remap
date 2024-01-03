@@ -16,6 +16,7 @@ import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClsClassImpl
 import org.jetbrains.kotlin.com.intellij.psi.impl.java.stubs.JavaStubElementTypes
 import org.jetbrains.kotlin.com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
+import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.js.resolve.diagnostics.findPsi
@@ -153,16 +154,32 @@ internal class PsiMapper(
             ambiguousImportStatics[ref]!!.add(mapped ?: fieldName)
         }
         if (mapped == null || mapped == fieldName) return
-        replaceIdentifier(expr, mapped)
 
         if (expr is PsiJavaCodeReferenceElement
                 && !expr.isQualified // qualified access is fine
                 && !isSwitchCase(expr) // referencing constants in case statements is fine
         ) {
-            error(expr, "Implicit member reference to remapped field \"$fieldName\". " +
-                    "This can cause issues if the remapped reference becomes shadowed by a local variable and is therefore forbidden. " +
-                    "Use \"this.$fieldName\" instead.")
+            // check if actually ambiguous (new name is shadowed by local variable)
+            var parent = expr.parent
+            while (parent != null && parent !is PsiCodeBlock) {
+                parent = parent.parent
+            }
+            if (parent != null) {
+                val scope = PsiTreeUtil.collectElementsOfType(parent, PsiVariable::class.java)
+                for (variable in scope) {
+                    if (variable.name == mapped) {
+                        replaceIdentifier(expr, "this.")
+                    }
+                }
+            } else {
+                error(
+                    expr, "Implicit member reference to remapped field \"$fieldName\". " +
+                            "This can cause issues if the remapped reference becomes shadowed by a local variable and is therefore forbidden. " +
+                            "Use \"this.$fieldName\" instead."
+                )
+            }
         }
+        replaceIdentifier(expr, mapped)
     }
 
     private fun map(expr: PsiElement, method: PsiMethod) {
