@@ -32,9 +32,13 @@ val desynthesizeTransformer = ClasspathTransformer { parent ->
             descriptor: String?,
             signature: String?,
             exceptions: Array<out String>?
-        ) = object : MethodVisitor(api, super.visitMethod(desynthesize(access), name, descriptor, signature, exceptions)) {
-            override fun visitParameter(name: String?, access: Int) =
-                super.visitParameter(name, desynthesize(access))
+        ): MethodVisitor {
+            // Remap synthetic to some other meaningless access. All methods that are already bridge should also already be synthetic.
+            val newAccess = desynthesize(access) or if ((access and Opcodes.ACC_SYNTHETIC) != 0) Opcodes.ACC_BRIDGE else 0
+            return object : MethodVisitor(api, super.visitMethod(newAccess, name, descriptor, signature, exceptions)) {
+                override fun visitParameter(name: String?, access: Int) =
+                    super.visitParameter(name, desynthesize(access))
+            }
         }
 
         override fun visitModule(name: String?, access: Int, version: String?) =

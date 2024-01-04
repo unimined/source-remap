@@ -70,6 +70,45 @@ private fun findAllSuperMethods(
     }
 }
 
+fun PsiJavaCodeReferenceElement.smartMultiResolve(): PsiElement? {
+    val result = multiResolve(false)
+    if (result.isEmpty()) {
+        return null
+    }
+    if (result.size == 1) {
+        return result[0].element
+    }
+    val methods = result.mapNotNull { it.element as? PsiMethod }
+    if (methods.size < result.size) {
+        return null // Only do heuristic search on methods
+    }
+    val nonSynthetic = methods.filter {
+        !it.modifierList.hasModifierProperty("volatile") // ACC_VOLATILE is access 0x40, which is what ACC_BRIDGE is on methods
+    }
+    if (nonSynthetic.size == 1) {
+        return nonSynthetic[0]
+    }
+    val heuristicSearch = nonSynthetic.ifEmpty { methods }
+    var lowestMethodSoFar = heuristicSearch[0]
+    var lowestReturnSoFar = lowestMethodSoFar.returnType
+    for (i in 1..heuristicSearch.lastIndex) {
+        val method = heuristicSearch[i]
+        val returnType = method.returnType ?: continue
+        if (lowestReturnSoFar == null) {
+            lowestMethodSoFar = method
+            lowestReturnSoFar = returnType
+            continue
+        }
+        if (lowestReturnSoFar.isAssignableFrom(returnType) && lowestReturnSoFar != returnType) {
+            lowestMethodSoFar = method
+            lowestReturnSoFar = returnType
+            continue
+        }
+        // In the future, maybe also analyze based on number of supertypes/hierarchy depth?
+    }
+    return lowestMethodSoFar
+}
+
 internal object PsiUtils {
     fun getSignature(method: PsiMethod): MethodSignature = MethodSignature(method.name, getDescriptor(method))
 

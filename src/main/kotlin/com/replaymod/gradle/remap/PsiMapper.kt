@@ -719,7 +719,7 @@ internal class PsiMapper(
 
             override fun visitReferenceElement(reference: PsiJavaCodeReferenceElement) {
                 if (valid(reference)) {
-                    map(reference, reference.resolve())
+                    map(reference, reference.smartMultiResolve())
                 }
                 super.visitReferenceElement(reference)
             }
