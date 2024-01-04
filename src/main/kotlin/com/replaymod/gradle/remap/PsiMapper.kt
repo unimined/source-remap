@@ -345,7 +345,7 @@ internal class PsiMapper(
 
     private fun findMappingInner(method: PsiMethod): MethodMapping? {
         val declaringClass = method.containingClass ?: return null
-        val className = declaringClass.qualifiedName
+        val className = declaringClass.dollarQualifiedName
 
         className?.let(map::findClassMapping)
             ?.findMethodMapping(getSignature(method))
@@ -353,7 +353,7 @@ internal class PsiMapper(
 
         for (superMethod in method.findSuperMethods()) {
             superMethod.containingClass
-                ?.qualifiedName
+                ?.dollarQualifiedName
                 ?.let(map::findClassMapping)
                 ?.findMethodMapping(getSignature(superMethod))
                 ?.let { return it }
