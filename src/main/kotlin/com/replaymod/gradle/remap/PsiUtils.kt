@@ -47,6 +47,29 @@ internal inline fun <T> Array<T>.moreThan(n: Int, predicate: (T) -> Boolean): Bo
     return false
 }
 
+fun PsiMethod.findAllSuperMethods() = findAllSuperMethods(this, mutableSetOf(this), null)
+
+private fun findAllSuperMethods(
+    method: PsiMethod,
+    set: MutableSet<PsiMethod>,
+    guard: MutableSet<PsiMethod>?
+): Iterator<PsiMethod> = iterator {
+    if (guard != null && !guard.add(method)) return@iterator
+    val supers = method.findSuperMethods()
+
+    if (set.add(method)) {
+        yield(method)
+    }
+
+    var useGuard = guard
+    for (superMethod in supers) {
+        if (useGuard == null) {
+            useGuard = mutableSetOf(method)
+        }
+        yieldAll(findAllSuperMethods(superMethod, set, useGuard))
+    }
+}
+
 internal object PsiUtils {
     fun getSignature(method: PsiMethod): MethodSignature = MethodSignature(method.name, getDescriptor(method))
 

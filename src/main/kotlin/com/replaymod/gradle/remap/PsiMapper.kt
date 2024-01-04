@@ -351,7 +351,7 @@ internal class PsiMapper(
             ?.findMethodMapping(getSignature(method))
             ?.let { return it }
 
-        for (superMethod in method.findSuperMethods()) {
+        for (superMethod in method.findAllSuperMethods()) {
             superMethod.containingClass
                 ?.dollarQualifiedName
                 ?.let(map::findClassMapping)
@@ -711,9 +711,6 @@ internal class PsiMapper(
             }
 
             override fun visitMethod(method: PsiMethod) {
-                if (method.name == "craft") {
-                    Unit
-                }
                 if (valid(method)) {
                     map(method, method)
                 }
