@@ -344,63 +344,40 @@ internal class PsiMapper(
     private fun findMapping(method: PsiMethod) = methodCache.computeIfAbsent(method, ::findMappingInner)
 
     private fun findMappingInner(method: PsiMethod): MethodMapping? {
-        var declaringClass: PsiClass? = method.containingClass ?: return null
-        val parentQueue = ArrayDeque<PsiClass>()
-        val visited = mutableSetOf(declaringClass!!)
-        parentQueue.offer(declaringClass)
-        var mapping: ClassMapping<*, *>? = null
+        val declaringClass = method.containingClass ?: return null
+        val className = declaringClass.qualifiedName
 
-        var name = declaringClass.qualifiedName
-        if (name != null) {
+        className?.let(map::findClassMapping)
+            ?.findMethodMapping(getSignature(method))
+            ?.let { return it }
+
+        for (superMethod in method.findSuperMethods()) {
+            superMethod.containingClass
+                ?.qualifiedName
+                ?.let(map::findClassMapping)
+                ?.findMethodMapping(getSignature(superMethod))
+                ?.let { return it }
+        }
+
+        if (className != null) {
             // If this method is declared in a mixin class, we want to consider the hierarchy of the target as well
-            mapping = mixinMappings[name]
+            val mapping = mixinMappings[className]
             // but only if the method conceptually belongs to the target class
             val isShadow = method.getAnnotation(CLASS_SHADOW) != null
             val isOverwrite = method.getAnnotation(CLASS_OVERWRITE) != null
             val isOverride = method.getAnnotation(CLASS_OVERRIDE) != null
-            if (mapping != null && !isShadow && !isOverwrite && !isOverride) {
-                return null // otherwise, it belongs to the mixin and never gets remapped
-            }
             if (mapping != null) {
-                findPsiClass(mapping.fullObfuscatedName)?.let {
-                    if (visited.add(it)) {
-                        parentQueue.offer(it)
-                    }
+                if (!isShadow && !isOverwrite && !isOverride) {
+                    return null // otherwise, it belongs to the mixin and never gets remapped
                 }
+                findPsiClass(mapping.fullObfuscatedName)
+                    ?.findMethodBySignature(method, false)
+                    ?.let(::findMapping)
+                    ?.let { return it }
             }
         }
 
-        var signature: MethodSignature? = null
-        while (true) {
-            if (mapping != null) {
-                if (signature == null) {
-                    signature = getSignature(method)
-                }
-                val mapped = mapping.findMethodMapping(signature)
-                if (mapped != null) {
-                    return mapped
-                }
-                mapping = null
-            }
-            while (mapping == null) {
-                declaringClass = parentQueue.poll()
-                if (declaringClass == null) return null
-
-                val superClass = declaringClass.superClass
-                if (superClass != null && visited.add(superClass)) {
-                    parentQueue.offer(superClass)
-                }
-                for (intf in declaringClass.interfaces) {
-                    if (visited.add(intf)) {
-                        parentQueue.offer(intf)
-                    }
-                }
-
-                name = declaringClass.dollarQualifiedName
-                if (name == null) continue
-                mapping = map.findClassMapping(name)
-            }
-        }
+        return null
     }
 
     private fun map(expr: PsiElement, resolved: PsiQualifiedNamedElement) {
@@ -734,6 +711,9 @@ internal class PsiMapper(
             }
 
             override fun visitMethod(method: PsiMethod) {
+                if (method.name == "craft") {
+                    Unit
+                }
                 if (valid(method)) {
                     map(method, method)
                 }
