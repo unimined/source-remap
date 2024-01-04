@@ -1,19 +1,22 @@
 package com.replaymod.gradle.remap
 
+import com.replaymod.gradle.remap.classpath.ClasspathTransformerManager
+import com.replaymod.gradle.remap.classpath.desynthesizeTransformer
 import org.cadixdev.lorenz.MappingSet
 import org.cadixdev.lorenz.io.MappingFormats
+import org.cadixdev.lorenz.model.MethodMapping
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
-import org.jetbrains.kotlin.cli.common.config.ContentRoot
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
+import org.jetbrains.kotlin.cli.jvm.compiler.setupIdeaStandaloneExecution
 import org.jetbrains.kotlin.cli.jvm.config.JavaSourceRoot
 import org.jetbrains.kotlin.cli.jvm.config.JvmClasspathRoot
 import org.jetbrains.kotlin.cli.jvm.modules.CoreJrtFileSystem
 import org.jetbrains.kotlin.com.intellij.codeInsight.CustomExceptionHandler
+import org.jetbrains.kotlin.com.intellij.ide.highlighter.JavaClassFileType
 import org.jetbrains.kotlin.com.intellij.mock.MockProject
 import org.jetbrains.kotlin.com.intellij.openapi.Disposable
 import org.jetbrains.kotlin.com.intellij.openapi.extensions.ExtensionPoint
@@ -23,6 +26,15 @@ import org.jetbrains.kotlin.com.intellij.openapi.vfs.StandardFileSystems
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileManager
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.local.CoreLocalFileSystem
 import org.jetbrains.kotlin.com.intellij.psi.PsiManager
+import org.jetbrains.kotlin.com.intellij.psi.PsiMethod
+import org.jetbrains.kotlin.com.intellij.psi.compiled.ClassFileDecompilers
+import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClassFileStubBuilder
+import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClsFileImpl
+import org.jetbrains.kotlin.com.intellij.psi.impl.java.stubs.impl.PsiJavaFileStubImpl
+import org.jetbrains.kotlin.com.intellij.psi.stubs.BinaryFileStubBuilders
+import org.jetbrains.kotlin.com.intellij.psi.stubs.Stub
+import org.jetbrains.kotlin.com.intellij.util.cls.ClsFormatException
+import org.jetbrains.kotlin.com.intellij.util.indexing.FileContent
 import org.jetbrains.kotlin.config.CommonConfigurationKeys
 import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
@@ -33,12 +45,13 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.stream.Collectors
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
 class Transformer(private val map: MappingSet) {
-    var classpath: Array<String>? = null
+    var classpath: Collection<Path> = listOf()
     var remappedClasspath: Array<String>? = null
     var jdkHome: File? = null
     var remappedJdkHome: File? = null
@@ -72,17 +85,50 @@ class Transformer(private val map: MappingSet) {
             config.put(CommonConfigurationKeys.MODULE_NAME, "main")
             jdkHome?.let {config.setupJdk(it) }
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> JavaSourceRoot(tmpDir.resolve(root.fileName).toFile(), "") })
-            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root ->  KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
-            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath!!.map { JvmClasspathRoot(File(it)) })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath.map { JvmClasspathRoot(it.toFile()) }) // This can be extended to use Paths fully, but there's no need atm
             config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
 
             // Our PsiMapper only works with the PSI tree elements, not with the faster (but kotlin-specific) classes
             config.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
 
+            setupIdeaStandaloneExecution()
+            val appEnv = KotlinCoreEnvironment.getOrCreateApplicationEnvironmentForProduction(disposable, config)
+            ClasspathTransformerManager.transformers += desynthesizeTransformer
+
+            BinaryFileStubBuilders.INSTANCE.removeExplicitExtension(
+                JavaClassFileType.INSTANCE,
+                BinaryFileStubBuilders.INSTANCE.findSingle(JavaClassFileType.INSTANCE)
+            )
+            BinaryFileStubBuilders.INSTANCE.addExplicitExtension(
+                JavaClassFileType.INSTANCE,
+                object : ClassFileStubBuilder() {
+                    override fun buildStubTree(
+                        fileContent: FileContent,
+                        decompiler: ClassFileDecompilers.Full?
+                    ): Stub? {
+                        return if (decompiler == null) null else fileContent.file.computeWithPreloadedContentHint(fileContent.content) {
+                            try {
+                                // TODO: Desynthesize files here instead of with a custom VFS
+                                val stub = ClsFileImpl.buildFileStub(
+                                    fileContent.file, ClasspathTransformerManager.transform(fileContent.content)
+                                )
+                                if (stub is PsiJavaFileStubImpl) {
+                                    stub.psiFactory = CustomClsStubPsiFactory
+                                }
+                                stub
+                            } catch (e: ClsFormatException) {
+                                null
+                            }
+                        }
+                    }
+                },
+                disposable
+            )
+
+            val projectEnv = KotlinCoreEnvironment.ProjectEnvironment(disposable, appEnv, config)
             val environment = KotlinCoreEnvironment.createForProduction(
-                    disposable,
-                    config,
-                    EnvironmentConfigFiles.JVM_CONFIG_FILES
+                projectEnv, config, EnvironmentConfigFiles.JVM_CONFIG_FILES
             )
             val rootArea = Extensions.getRootArea()
             synchronized(rootArea) {
@@ -98,11 +144,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = try {
-                analyze1521(environment, ktFiles)
-            } catch (e: NoSuchMethodError) {
-                analyze1620(environment, ktFiles)
-            }
+            val analysis = analyze1620(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -133,13 +175,14 @@ class Transformer(private val map: MappingSet) {
             }
 
             val results = mutableMapOf<Pair<Path, String>, List<Pair<Int, String>>>()
+            val methodCache = ConcurrentHashMap<PsiMethod, MethodMapping?>()
             for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
                 val unitName = unit.key
                 val file = vfs.findFileByIoFile(tmpDir.resolve(root.fileName).resolve(unitName).toFile())!!
                 val psiFile = psiManager.findFile(file)!!
 
                 var (text, errors) = try {
-                    PsiMapper(map, remappedEnv?.project, psiFile, analysis.bindingContext, patterns).remapFile()
+                    PsiMapper(map, remappedEnv?.project, psiFile, analysis.bindingContext, patterns, methodCache).remapFile()
                 } catch (e: Exception) {
                     throw RuntimeException("Failed to map file \"$unitName\".", e)
                 }
@@ -188,11 +231,7 @@ class Transformer(private val map: MappingSet) {
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        try {
-            analyze1521(environment, emptyList())
-        } catch (e: NoSuchMethodError) {
-            analyze1620(environment, emptyList())
-        }
+        analyze1620(environment, emptyList())
         return environment
     }
 
@@ -217,7 +256,7 @@ class Transformer(private val map: MappingSet) {
             val outputs = args[3].split(File.pathSeparatorChar).map { File(it).toPath() }
             val transformer = Transformer(mappings)
 
-            transformer.classpath = classpath.toTypedArray()
+            transformer.classpath = classpath.map(Paths::get)
 
             val closeLater = mutableListOf<Closeable>()
 

@@ -47,12 +47,10 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-val kotlin1521 = kotlinVersion("1.5.21", isPrimaryVersion = true)
-val kotlin1620 = kotlinVersion("1.6.20")
-
+val kotlin1620 = kotlinVersion("1.6.20", isPrimaryVersion = true)
 
 dependencies {
-    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.5.21")!!)
+    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.6.20")!!)
     shadow(implementation(kotlin("stdlib"))!!)
     shadow(api("org.cadixdev:lorenz:0.5.0")!!)
     runtimeOnly("net.java.dev.jna:jna:5.10.0") // don't strictly need this but IDEA spams log without
@@ -70,7 +68,7 @@ dependencies {
 }
 
 tasks.jar {
-    from(sourceSets.main.get().output, kotlin1521.output, kotlin1620.output)
+    from(sourceSets.main.get().output, kotlin1620.output)
 
     manifest {
         attributes(
@@ -82,7 +80,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
-    from(sourceSets.main.get().output, kotlin1521.output, kotlin1620.output)
+    from(sourceSets.main.get().output, kotlin1620.output)
 
     configurations = listOf(
         project.configurations.shadow.get()
