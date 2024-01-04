@@ -7,4 +7,8 @@ public class AParent {
 
     public AParent() {}
     public AParent(A arg) {}
+
+    public AParent aGeneratedSynthetic() {
+        return this;
+    }
 }

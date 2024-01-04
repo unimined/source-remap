@@ -55,15 +55,7 @@ internal class PsiMapper(
 
     private fun replace(e: PsiElement, with: () -> String) = replace(e.textRange, with)
     private fun replace(textRange: TextRange, with: () -> String) {
-        changes.compute(textRange) { _, replacement ->
-            if (replacement != null) {
-                {
-                    replacement() + with()
-                }
-            } else {
-                with
-            }
-        }
+        changes.merge(textRange, with) { old, new -> { old() + new() } }
     }
 
     private fun replace(e: PsiElement, with: String) = replace(e.textRange, with)
@@ -834,6 +826,8 @@ internal class PsiMapper(
 
         return getResult(file.text)
     }
+
+    override fun toString() = "PsiMapper for $file"
 
     companion object {
         private const val CLASS_MIXIN = "org.spongepowered.asm.mixin.Mixin"

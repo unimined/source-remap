@@ -68,7 +68,7 @@ object TestData {
     fun remap(fileName: String, content: String, patternsBefore: String, patternsAfter: String): String {
         val path = Paths.get(".")
         val outputs = mutableMapOf<String, ByteArrayOutputStream>()
-        transformer.remap(mapOf(
+        val results = transformer.remap(mapOf(
             path to mapOf(
                 fileName to { content.byteInputStream() },
                 "pattern.java" to { "class Patterns {\n$patternsBefore\n}".byteInputStream() },
@@ -77,6 +77,13 @@ object TestData {
             "pattern.java" to { "class Patterns {\n$patternsAfter\n}".byteInputStream() },
         )) {
             _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }
+        for ((fileInfo, errors) in results) {
+            if (errors.isEmpty()) continue
+            println("${fileInfo.second} had ${errors.size} errors:")
+            for ((line, message) in errors) {
+                println("  $line: $message")
+            }
         }
         return outputs[fileName]!!.toString()
     }

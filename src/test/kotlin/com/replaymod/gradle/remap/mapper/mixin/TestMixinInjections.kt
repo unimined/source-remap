@@ -240,4 +240,25 @@ class TestMixinInjections {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remaps injection into generic method`() {
+        TestData.remap("""
+            @org.spongepowered.asm.mixin.Mixin(a.pkg.A.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.Overwrite
+                private String lambda${'$'}aLambdaWithGeneric${'$'}0(java.util.function.Supplier<String> supplier) {
+                    return "Bye, " + supplier.get();
+                }
+            }
+        """.trimIndent()) shouldBe """
+            @org.spongepowered.asm.mixin.Mixin(b.pkg.B.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.Overwrite
+                private String lambda${'$'}bLambdaWithGeneric${'$'}0(java.util.function.Supplier<String> supplier) {
+                    return "Bye, " + supplier.get();
+                }
+            }
+        """.trimIndent()
+    }
 }

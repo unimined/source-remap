@@ -1,5 +1,7 @@
 package b.pkg;
 
+import java.util.function.Supplier;
+
 public class B extends BParent implements BInterface {
     private B b;
     private int bField;
@@ -16,6 +18,10 @@ public class B extends BParent implements BInterface {
         bInterfaceMethod();
     }
 
+    public int bMethod(b.pkg.BInterface[] arguments) {
+        return 0;
+    }
+
     public B getB() {
         return this;
     }
@@ -25,6 +31,11 @@ public class B extends BParent implements BInterface {
     }
 
     public void setSyntheticB(B arg) {
+    }
+
+    @Override
+    public B bGeneratedSynthetic() {
+        return this;
     }
 
     public boolean isSyntheticBooleanB() {
@@ -96,6 +107,10 @@ public class B extends BParent implements BInterface {
     @Override
     public void bInterfaceMethod() {
         new B() {};
+    }
+
+    public void bLambdaWithGeneric(Supplier<String> supplier) {
+        final Supplier<String> prefixed = () -> "Hi, " + supplier.get();
     }
 
     public void bAnon() {

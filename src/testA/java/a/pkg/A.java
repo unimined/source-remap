@@ -19,6 +19,10 @@ public class A extends AParent implements AInterface {
         aInterfaceMethod();
     }
 
+    public int aMethod(a.pkg.AInterface[] arguments) {
+        return 0;
+    }
+
     public A getA() {
         return this;
     }
@@ -28,6 +32,11 @@ public class A extends AParent implements AInterface {
     }
 
     public void setSyntheticA(A arg) {
+    }
+
+    @Override
+    public A aGeneratedSynthetic() {
+        return this;
     }
 
     public boolean isSyntheticBooleanA() {
@@ -99,6 +108,10 @@ public class A extends AParent implements AInterface {
     @Override
     public void aInterfaceMethod() {
         new A() {};
+    }
+
+    public void aLambdaWithGeneric(Supplier<String> supplier) {
+        final Supplier<String> prefixed = () -> "Hi, " + supplier.get();
     }
 
     public void aAnon() {
