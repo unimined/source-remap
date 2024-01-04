@@ -108,7 +108,6 @@ class Transformer(private val map: MappingSet) {
                     ): Stub? {
                         return if (decompiler == null) null else fileContent.file.computeWithPreloadedContentHint(fileContent.content) {
                             try {
-                                // TODO: Desynthesize files here instead of with a custom VFS
                                 val stub = ClsFileImpl.buildFileStub(
                                     fileContent.file, ClasspathTransformerManager.transform(fileContent.content)
                                 )
