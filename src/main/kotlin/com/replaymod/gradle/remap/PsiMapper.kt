@@ -362,12 +362,13 @@ internal class PsiMapper(
         if (className != null) {
             // If this method is declared in a mixin class, we want to consider the hierarchy of the target as well
             val mapping = mixinMappings[className]
-            // but only if the method conceptually belongs to the target class
-            val isShadow = method.getAnnotation(CLASS_SHADOW) != null
-            val isOverwrite = method.getAnnotation(CLASS_OVERWRITE) != null
-            val isOverride = method.getAnnotation(CLASS_OVERRIDE) != null
             if (mapping != null) {
-                if (!isShadow && !isOverwrite && !isOverride) {
+                // but only if the method conceptually belongs to the target class
+                if (
+                    method.getAnnotation(CLASS_SHADOW) == null &&
+                    method.getAnnotation(CLASS_OVERWRITE) == null &&
+                    method.getAnnotation(CLASS_OVERRIDE) == null
+                ) {
                     return null // otherwise, it belongs to the mixin and never gets remapped
                 }
                 findPsiClass(mapping.fullObfuscatedName)
