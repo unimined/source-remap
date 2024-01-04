@@ -371,8 +371,11 @@ internal class PsiMapper(
                     return null // otherwise, it belongs to the mixin and never gets remapped
                 }
                 findPsiClass(mapping.fullObfuscatedName)
-                    ?.findMethodBySignature(method, false)
-                    ?.let(::findMapping)
+                    ?.findMethodsByName(method.name, false)
+                    ?.asSequence()
+                    ?.filter { it.matchesDescriptor(method) }
+                    ?.mapNotNull(::findMapping)
+                    ?.firstOrNull()
                     ?.let { return it }
             }
         }

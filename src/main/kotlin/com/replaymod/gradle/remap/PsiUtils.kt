@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
 import org.jetbrains.kotlin.com.intellij.psi.*
 import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
+import org.jetbrains.kotlin.com.intellij.psi.util.TypeConversionUtil
 
 internal val PsiClass.dollarQualifiedName: String? get() {
     val parent = PsiTreeUtil.getParentOfType<PsiClass>(this, PsiClass::class.java) ?: return qualifiedName
@@ -107,6 +108,23 @@ fun PsiJavaCodeReferenceElement.smartMultiResolve(): PsiElement? {
         // In the future, maybe also analyze based on number of supertypes/hierarchy depth?
     }
     return lowestMethodSoFar
+}
+
+fun PsiMethod.matchesDescriptor(method: PsiMethod): Boolean {
+    if (TypeConversionUtil.erasure(returnType) != TypeConversionUtil.erasure(method.returnType)) {
+        return false
+    }
+    val parameters = parameterList.parameters
+    val otherParameters = method.parameterList.parameters
+    if (parameters.size != otherParameters.size) {
+        return false
+    }
+    for (i in parameters.indices) {
+        if (TypeConversionUtil.erasure(parameters[i].type) != TypeConversionUtil.erasure(otherParameters[i].type)) {
+            return false
+        }
+    }
+    return true
 }
 
 internal object PsiUtils {
