@@ -1,16 +1,11 @@
 package com.replaymod.gradle.remap
 
-import org.cadixdev.bombe.type.ArrayType
-import org.cadixdev.bombe.type.FieldType
 import org.cadixdev.bombe.type.MethodDescriptor
-import org.cadixdev.bombe.type.ObjectType
-import org.cadixdev.bombe.type.Type
-import org.cadixdev.bombe.type.VoidType
 import org.cadixdev.bombe.type.signature.MethodSignature
 import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
 import org.jetbrains.kotlin.com.intellij.psi.*
+import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.kotlin.com.intellij.psi.util.TypeConversionUtil
 
 internal val PsiClass.dollarQualifiedName: String? get() {
     val parent = PsiTreeUtil.getParentOfType<PsiClass>(this, PsiClass::class.java) ?: return qualifiedName
@@ -41,32 +36,21 @@ internal val PsiAnnotationMemberValue.resolvedLiteralValues: List<Pair<PsiLitera
         else -> listOfNotNull(resolvedLiteralValue)
     }
 
+internal inline fun <T> Array<T>.moreThan(n: Int, predicate: (T) -> Boolean): Boolean {
+    require(n >= 0)
+    var count = 0
+    for (t in this) {
+        if (predicate(t) && ++count > n) {
+            return true
+        }
+    }
+    return false
+}
+
 internal object PsiUtils {
     fun getSignature(method: PsiMethod): MethodSignature = MethodSignature(method.name, getDescriptor(method))
 
-    private fun getDescriptor(method: PsiMethod): MethodDescriptor = MethodDescriptor(
-            method.parameterList.parameters.map { getFieldType(it.type) },
-            getType(method.returnType)
-    )
-
-    private fun getFieldType(type: PsiType?): FieldType = when (val erasedType = TypeConversionUtil.erasure(type)) {
-        is PsiPrimitiveType -> FieldType.of(erasedType.kind.binaryName)
-        is PsiArrayType -> {
-            val array = erasedType as PsiArrayType?
-            ArrayType(array!!.arrayDimensions, getFieldType(array.deepComponentType))
-        }
-        is PsiClassType -> {
-            val resolved = erasedType.resolve() ?: throw NullPointerException("Failed to resolve type $erasedType")
-            val qualifiedName = resolved.dollarQualifiedName
-                    ?: throw NullPointerException("Type $erasedType has no qualified name.")
-            ObjectType(qualifiedName)
-        }
-        else -> throw IllegalArgumentException("Cannot translate type " + erasedType!!)
-    }
-
-    private fun getType(type: PsiType?): Type = if (TypeConversionUtil.isVoidType(type)) {
-        VoidType.INSTANCE
-    } else {
-        getFieldType(type)
+    private fun getDescriptor(method: PsiMethod): MethodDescriptor {
+        return MethodDescriptor.of(ClassUtil.getAsmMethodSignature(method))
     }
 }

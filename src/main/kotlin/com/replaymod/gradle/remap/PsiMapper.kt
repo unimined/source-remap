@@ -12,8 +12,6 @@ import org.jetbrains.kotlin.com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
 import org.jetbrains.kotlin.com.intellij.psi.*
-import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClsClassImpl
-import org.jetbrains.kotlin.com.intellij.psi.impl.java.stubs.JavaStubElementTypes
 import org.jetbrains.kotlin.com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
@@ -37,11 +35,12 @@ import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
 import java.util.*
 
 internal class PsiMapper(
-        private val map: MappingSet,
-        private val remappedProject: Project?,
-        private val file: PsiFile,
-        private val bindingContext: BindingContext,
-        private val patterns: PsiPatterns?
+    private val map: MappingSet,
+    private val remappedProject: Project?,
+    private val file: PsiFile,
+    private val bindingContext: BindingContext,
+    private val patterns: PsiPatterns?,
+    private val methodCache: MutableMap<PsiMethod, MethodMapping?>
 ) {
     private val mixinMappings = mutableMapOf<String, ClassMapping<*, *>>()
     private val errors = mutableListOf<Pair<Int, String>>()
@@ -99,46 +98,11 @@ internal class PsiMapper(
         return Pair(result, errors)
     }
 
-    private fun findPsiClass(name: String, project: Project = file.project): PsiClass? {
-        val value = JavaPsiFacade.getInstance(project).findClass(
+    private fun findPsiClass(name: String, project: Project = file.project) =
+        JavaPsiFacade.getInstance(project).findClass(
             name.replace('/', '.').replace('$', '.'),
             GlobalSearchScope.allScope(project),
         )
-        if (value == null) {
-            // failed to find? is anonymous class?
-            val dollarIndex = name.lastIndexOf('$')
-            if (dollarIndex != -1) {
-                val afterDollar = name.substring(dollarIndex + 1)
-                if (afterDollar.toIntOrNull() != null) {
-                    val outerName = name.substring(0, dollarIndex)
-                    val outer = findPsiClass(outerName, project) ?: return null
-                    if (outer is ClsClassImpl) {
-                        // for some reason anonymous are excluded -_-
-                        return outer.stub.getChildrenByType(JavaStubElementTypes.CLASS, PsiClass.ARRAY_FACTORY).firstOrNull {
-                            it.name == afterDollar
-                        }
-                    } else {
-                        // visit outer class with a visitor and return on anonymous class that matches
-                        var result: PsiClass? = null
-                        outer.acceptChildren(object : JavaRecursiveElementVisitor() {
-                            override fun visitAnonymousClass(aClass: PsiAnonymousClass) {
-                                if (aClass.dollarQualifiedName.equals(name.replace('/', '.'))) {
-                                    result = aClass
-                                }
-                                super.visitClass(aClass)
-                            }
-
-                            override fun visitElement(element: PsiElement) {
-                                System.err.println("Visiting ${element.javaClass.simpleName} in ${outer.name}")
-                            }
-                        })
-                        return result
-                    }
-                }
-            }
-        }
-        return value
-    }
 
     private fun map(expr: PsiElement, field: PsiField) {
         val fieldName = field.name ?: return
@@ -377,7 +341,9 @@ internal class PsiMapper(
         }
     }
 
-    private fun findMapping(method: PsiMethod): MethodMapping? {
+    private fun findMapping(method: PsiMethod) = methodCache.computeIfAbsent(method, ::findMappingInner)
+
+    private fun findMappingInner(method: PsiMethod): MethodMapping? {
         var declaringClass: PsiClass? = method.containingClass ?: return null
         val parentQueue = ArrayDeque<PsiClass>()
         val visited = mutableSetOf(declaringClass!!)
@@ -586,7 +552,10 @@ internal class PsiMapper(
                     }
                     val mappedName = targetMethod?.let(::findMapping)?.deobfuscatedName ?: targetName
 
-                    val ambiguousName = mapping.methodMappings.count { it.deobfuscatedName == mappedName } > 1
+//                    val ambiguousName = mapping.methodMappings.count { it.deobfuscatedName == mappedName } > 1
+                    val ambiguousName = targetMethod?.containingClass?.methods?.moreThan(1) {
+                        !it.isConstructor && findMapping(it)?.deobfuscatedName == mappedName
+                    } ?: false
                     val mapped = mappedName + when {
                         ambiguousName && targetMethod != null ->
                             remapMethodDesc(ClassUtil.getAsmMethodSignature(targetMethod))
@@ -595,7 +564,7 @@ internal class PsiMapper(
                     }
 
                     if (mapped != literalValue && valid(literalExpr)) {
-                        replace(literalExpr, '"'.toString() + mapped + '"'.toString())
+                        replace(literalExpr, "\"$mapped\"")
                     }
                 }
             }
