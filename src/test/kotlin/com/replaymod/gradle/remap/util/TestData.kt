@@ -18,6 +18,10 @@ object TestData {
         legacyCopy
     }
 
+    init {
+        System.setProperty("idea.use.native.fs.for.win", "false")
+    }
+
     val transformer = Transformer(mappings).apply {
         fun findClasspathEntry(cls: String): Path {
             val classFilePath = "/${cls.replace('.', '/')}.class"
