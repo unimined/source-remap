@@ -18,7 +18,7 @@ public class B extends BParent implements BInterface {
         bInterfaceMethod();
     }
 
-    public int bMethod(b.pkg.BInterface[] arguments) {
+    public int bMethodWithAnArrayArgument(b.pkg.BInterface[] arguments) {
         return 0;
     }
 

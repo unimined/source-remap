@@ -2,6 +2,7 @@ CL: a/pkg/A b/pkg/B
 FD: a/pkg/A/a b/pkg/B/b
 FD: a/pkg/A/aField b/pkg/B/bField
 MD: a/pkg/A/aMethod ()V b/pkg/B/bMethod ()V
+MD: a/pkg/A/aMethodWithAnArrayArgument ()V b/pkg/B/bMethodWithAnArrayArgument ()V
 MD: a/pkg/A/getA ()La/pkg/A; b/pkg/B/getB ()Lb/pkg/B;
 MD: a/pkg/A/getSyntheticA ()La/pkg/A; b/pkg/B/getSyntheticB ()Lb/pkg/B;
 MD: a/pkg/A/setSyntheticA (La/pkg/A;)V; b/pkg/B/setSyntheticB (Lb/pkg/B;)V;

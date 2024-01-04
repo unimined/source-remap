@@ -83,18 +83,18 @@ class TestMixinShadow {
             @org.spongepowered.asm.mixin.Mixin(a.pkg.A.class)
             abstract class MixinA {
                 @org.spongepowered.asm.mixin.Shadow
-                private int aMethod(a.pkg.AInterface[] arguments);
+                private int aMethodWithAnArrayArgument(a.pkg.AInterface[] arguments);
                 private void test() {
-                    aMethod(new a.pkg.AInterface[1]);
+                    aMethodWithAnArrayArgument(new a.pkg.AInterface[1]);
                 }
             }
         """.trimIndent()) shouldBe """
             @org.spongepowered.asm.mixin.Mixin(b.pkg.B.class)
             abstract class MixinA {
                 @org.spongepowered.asm.mixin.Shadow
-                private int bMethod(b.pkg.BInterface[] arguments);
+                private int bMethodWithAnArrayArgument(b.pkg.BInterface[] arguments);
                 private void test() {
-                    bMethod(new b.pkg.BInterface[1]);
+                    bMethodWithAnArrayArgument(new b.pkg.BInterface[1]);
                 }
             }
         """.trimIndent()

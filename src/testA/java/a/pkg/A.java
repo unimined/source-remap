@@ -19,7 +19,7 @@ public class A extends AParent implements AInterface {
         aInterfaceMethod();
     }
 
-    public int aMethod(a.pkg.AInterface[] arguments) {
+    public int aMethodWithAnArrayArgument(a.pkg.AInterface[] arguments) {
         return 0;
     }
 
