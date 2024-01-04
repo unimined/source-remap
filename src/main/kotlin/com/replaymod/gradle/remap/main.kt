@@ -229,7 +229,7 @@ private fun runTransformer(mappings: MappingSet, classpath: Collection<Path>, re
     System.setProperty("idea.use.native.fs.for.win", "false")
     val transformer = Transformer(mappings)
 
-    transformer.classpath = classpath.map(Path::toString).toTypedArray()
+    transformer.classpath = classpath
 
     val closeLater = mutableListOf<Closeable>()
 
