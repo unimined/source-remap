@@ -96,10 +96,9 @@ class Transformer(private val map: MappingSet) {
             val appEnv = KotlinCoreEnvironment.getOrCreateApplicationEnvironmentForProduction(disposable, config)
             ClasspathTransformerManager.transformers += desynthesizeTransformer
 
-            BinaryFileStubBuilders.INSTANCE.removeExplicitExtension(
-                JavaClassFileType.INSTANCE,
-                BinaryFileStubBuilders.INSTANCE.findSingle(JavaClassFileType.INSTANCE)
-            )
+            BinaryFileStubBuilders.INSTANCE.findSingle(JavaClassFileType.INSTANCE)?.let {
+                BinaryFileStubBuilders.INSTANCE.removeExplicitExtension(JavaClassFileType.INSTANCE, it)
+            }
             BinaryFileStubBuilders.INSTANCE.addExplicitExtension(
                 JavaClassFileType.INSTANCE,
                 object : ClassFileStubBuilder() {
