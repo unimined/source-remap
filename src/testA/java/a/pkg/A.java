@@ -143,4 +143,17 @@ public class A extends AParent implements AInterface {
     }
 
     public class GenericA<T> {}
+
+    public static class InnerC {
+        public InnerC getA() {
+            return this;
+        }
+
+        public static class InnerD extends InnerC {
+            @Override
+            public InnerD getA() {
+                return this;
+            }
+        }
+    }
 }

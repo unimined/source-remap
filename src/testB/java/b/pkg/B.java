@@ -136,4 +136,17 @@ public class B extends BParent implements BInterface {
     }
 
     public class GenericB<T> {}
+
+    public static class InnerC {
+        public InnerC getB() {
+            return this;
+        }
+
+        public static class InnerD extends InnerC {
+            @Override
+            public InnerD getB() {
+                return this;
+            }
+        }
+    }
 }

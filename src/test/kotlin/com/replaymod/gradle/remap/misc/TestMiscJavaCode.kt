@@ -23,4 +23,23 @@ class TestMiscJavaCode {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remaps methods that are called on the return value of another method when using synthetic bridges that change the return type`() {
+        TestData.remap("""
+            public class Test {
+                public static void test() {
+                    final a.pkg.A value = null;
+                    value.aGeneratedSynthetic().aGeneratedSynthetic().aGeneratedSynthetic();
+                }
+            }
+        """.trimIndent()) shouldBe """
+            public class Test {
+                public static void test() {
+                    final b.pkg.B value = null;
+                    value.bGeneratedSynthetic().bGeneratedSynthetic().bGeneratedSynthetic();
+                }
+            }
+        """.trimIndent()
+    }
 }

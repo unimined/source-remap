@@ -290,4 +290,21 @@ class TestMixinInjections {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remaps synthetic bridges that change the return type inside inner classes inside inner classes`() {
+        TestData.remap("""
+            @org.spongepowered.asm.mixin.Mixin(a.pkg.A.InnerB.InnerC.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.injection.Inject(method = "getA()La/pkg/A${'$'}InnerB${'$'}InnerC")
+                private void test() {}
+            }
+        """.trimIndent()) shouldBe """
+            @org.spongepowered.asm.mixin.Mixin(b.pkg.B.InnerB.InnerC.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.injection.Inject(method = "getB()Lb/pkg/B${'$'}InnerB${'$'}InnerC")
+                private void test() {}
+            }
+        """.trimIndent()
+    }
 }
