@@ -173,7 +173,7 @@ class Transformer(private val map: MappingSet) {
             }
 
             val results = mutableMapOf<Pair<Path, String>, List<Pair<Int, String>>>()
-            val methodCache = ConcurrentHashMap<PsiMethod, MethodMapping?>()
+            val methodCache = ConcurrentHashMap<PsiMethod, Optional<MethodMapping>>()
             for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
                 val unitName = unit.key
                 val file = vfs.findFileByIoFile(tmpDir.resolve(root.fileName).resolve(unitName).toFile())!!

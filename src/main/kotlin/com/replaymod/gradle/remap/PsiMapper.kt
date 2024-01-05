@@ -40,7 +40,7 @@ internal class PsiMapper(
     private val file: PsiFile,
     private val bindingContext: BindingContext,
     private val patterns: PsiPatterns?,
-    private val methodCache: MutableMap<PsiMethod, MethodMapping?>
+    private val methodCache: MutableMap<PsiMethod, Optional<MethodMapping>>
 ) {
     private val mixinMappings = mutableMapOf<String, ClassMapping<*, *>>()
     private val errors = mutableListOf<Pair<Int, String>>()
@@ -333,22 +333,22 @@ internal class PsiMapper(
         }
     }
 
-    private fun findMapping(method: PsiMethod) = methodCache.computeIfAbsent(method, ::findMappingInner)
+    private fun findMapping(method: PsiMethod) = methodCache.computeIfAbsent(method, ::findMappingInner).orElse(null)
 
-    private fun findMappingInner(method: PsiMethod): MethodMapping? {
-        val declaringClass = method.containingClass ?: return null
+    private fun findMappingInner(method: PsiMethod): Optional<MethodMapping> {
+        val declaringClass = method.containingClass ?: return Optional.empty()
         val className = declaringClass.dollarQualifiedName
 
         className?.let(map::findClassMapping)
             ?.findMethodMapping(getSignature(method))
-            ?.let { return it }
+            ?.let { return Optional.of(it) }
 
         for (superMethod in method.findAllSuperMethods()) {
             superMethod.containingClass
                 ?.dollarQualifiedName
                 ?.let(map::findClassMapping)
                 ?.findMethodMapping(getSignature(superMethod))
-                ?.let { return it }
+                ?.let { return Optional.of(it) }
         }
 
         if (className != null) {
@@ -361,7 +361,7 @@ internal class PsiMapper(
                     method.getAnnotation(CLASS_OVERWRITE) == null &&
                     method.getAnnotation(CLASS_OVERRIDE) == null
                 ) {
-                    return null // otherwise, it belongs to the mixin and never gets remapped
+                    return Optional.empty() // otherwise, it belongs to the mixin and never gets remapped
                 }
                 findPsiClass(mapping.fullObfuscatedName)
                     ?.findMethodsByName(method.name, false)
@@ -369,11 +369,11 @@ internal class PsiMapper(
                     ?.filter { it.matchesDescriptor(method) }
                     ?.mapNotNull(::findMapping)
                     ?.firstOrNull()
-                    ?.let { return it }
+                    ?.let { return Optional.of(it) }
             }
         }
 
-        return null
+        return Optional.empty()
     }
 
     private fun map(expr: PsiElement, resolved: PsiQualifiedNamedElement) {
