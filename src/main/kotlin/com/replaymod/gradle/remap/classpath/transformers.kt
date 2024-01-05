@@ -33,8 +33,13 @@ val desynthesizeTransformer = ClasspathTransformer { parent ->
             signature: String?,
             exceptions: Array<out String>?
         ): MethodVisitor {
-            // Remap synthetic to some other meaningless access. All methods that are already bridge should also already be synthetic.
-            val newAccess = desynthesize(access) or if ((access and Opcodes.ACC_SYNTHETIC) != 0) Opcodes.ACC_BRIDGE else 0
+            var newAccess = desynthesize(access)
+            // We store the synthetic flag as strictfp so that smartMultiResolve can detect if a method was initially synthetic
+            newAccess = if ((access and Opcodes.ACC_SYNTHETIC) != 0) {
+                newAccess or Opcodes.ACC_STRICT
+            } else {
+                newAccess and Opcodes.ACC_STRICT.inv()
+            }
             return object : MethodVisitor(api, super.visitMethod(newAccess, name, descriptor, signature, exceptions)) {
                 override fun visitParameter(name: String?, access: Int) =
                     super.visitParameter(name, desynthesize(access))

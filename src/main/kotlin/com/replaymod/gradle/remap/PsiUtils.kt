@@ -84,7 +84,7 @@ fun PsiJavaCodeReferenceElement.smartMultiResolve(): PsiElement? {
         return null // Only do heuristic search on methods
     }
     val nonSynthetic = methods.filter {
-        !it.modifierList.hasModifierProperty("volatile") // ACC_VOLATILE is access 0x40, which is what ACC_BRIDGE is on methods
+        !it.modifierList.hasModifierProperty(PsiModifier.STRICTFP)
     }
     if (nonSynthetic.size == 1) {
         return nonSynthetic[0]
