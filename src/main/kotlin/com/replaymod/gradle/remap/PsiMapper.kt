@@ -333,7 +333,8 @@ internal class PsiMapper(
         }
     }
 
-    private fun findMapping(method: PsiMethod) = methodCache.computeIfAbsent(method, ::findMappingInner).orElse(null)
+    private fun findMapping(method: PsiMethod): MethodMapping? =
+        methodCache.getOrPut(method) { findMappingInner(method) }.orElse(null)
 
     private fun findMappingInner(method: PsiMethod): Optional<MethodMapping> {
         val declaringClass = method.containingClass ?: return Optional.empty()

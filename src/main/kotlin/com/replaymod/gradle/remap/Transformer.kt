@@ -45,7 +45,6 @@ import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
 import java.util.stream.Collectors
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -173,7 +172,7 @@ class Transformer(private val map: MappingSet) {
             }
 
             val results = mutableMapOf<Pair<Path, String>, List<Pair<Int, String>>>()
-            val methodCache = ConcurrentHashMap<PsiMethod, Optional<MethodMapping>>()
+            val methodCache = mutableMapOf<PsiMethod, Optional<MethodMapping>>()
             for ((root, unit) in sources.flatMap { entry -> entry.value.entries.map { entry.key to it } }) {
                 val unitName = unit.key
                 val file = vfs.findFileByIoFile(tmpDir.resolve(root.fileName).resolve(unitName).toFile())!!
