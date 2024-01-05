@@ -114,6 +114,14 @@ public class A extends AParent implements AInterface {
         final Supplier<String> prefixed = () -> "Hi, " + supplier.get();
     }
 
+    public byte[] aArrayMethod() {
+        return new byte[0];
+    }
+
+    public void aCallArrayMethod() {
+        final byte[] value = aArrayMethod();
+    }
+
     public void aAnon() {
         new A() {
             public void aMethodAnon() {

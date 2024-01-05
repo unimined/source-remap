@@ -26,6 +26,8 @@ MD: a/pkg/A/commonOverloaded (Ljava/lang/Object;)V b/pkg/B/commonOverloaded (Lja
 MD: a/pkg/A/commonOverloaded (La/pkg/A;)V b/pkg/B/commonOverloaded (La/pkg/B;)V
 MD: a/pkg/A/aLambdaWithGeneric (Ljava/util/function/Supplier;)V b/pkg/B/bLambdaWithGeneric (Ljava/util/function/Supplier;)V
 MD: a/pkg/A/lambda$aLambdaWithGeneric$0 (Ljava/util/function/Supplier;)Ljava/lang/String; b/pkg/B/lambda$bLambdaWithGeneric$0 (Ljava/util/function/Supplier;)Ljava/lang/String;
+MD: a/pkg/A/aArrayMethod ()[B b/pkg/B/bArrayMethod ()[B
+MD: a/pkg/A/aCallArrayMethod ()V b/pkg/B/bCallArrayMethod ()V
 CL: a/pkg/A$1 b/pkg/B$1
 CL: a/pkg/A$2 b/pkg/B$2
 MD: a/pkg/A$2/aMethodAnon ()V b/pkg/B$2/bMethodAnon ()V

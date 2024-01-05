@@ -261,4 +261,33 @@ class TestMixinInjections {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remaps injections that use @At INVOKE with an unmapped array type in the descriptor`() {
+        TestData.remap("""
+            @org.spongepowered.asm.mixin.Mixin(a.pkg.A.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.injection.Inject(
+                    method = "aCallArrayMethod",
+                    at = @org.spongepowered.asm.mixin.injection.At(
+                        value = "INVOKE",
+                        target = "La/pkg/A;aArrayMethod()[B"
+                    )
+                )
+                private void test() {}
+            }
+        """.trimIndent()) shouldBe """
+            @org.spongepowered.asm.mixin.Mixin(b.pkg.B.class)
+            class MixinA {
+                @org.spongepowered.asm.mixin.injection.Inject(
+                    method = "bCallArrayMethod",
+                    at = @org.spongepowered.asm.mixin.injection.At(
+                        value = "INVOKE",
+                        target = "Lb/pkg/B;bArrayMethod()[B"
+                    )
+                )
+                private void test() {}
+            }
+        """.trimIndent()
+    }
 }

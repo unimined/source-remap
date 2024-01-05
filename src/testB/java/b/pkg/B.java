@@ -113,6 +113,14 @@ public class B extends BParent implements BInterface {
         final Supplier<String> prefixed = () -> "Hi, " + supplier.get();
     }
 
+    public byte[] bArrayMethod() {
+        return new byte[0];
+    }
+
+    public void bCallArrayMethod() {
+        final byte[] value = bArrayMethod();
+    }
+
     public void bAnon() {
         new B() {
             public void bMethodAnon() {

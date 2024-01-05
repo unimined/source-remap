@@ -527,7 +527,7 @@ internal class PsiMapper(
 
 //                    val ambiguousName = mapping.methodMappings.count { it.deobfuscatedName == mappedName } > 1
                     val ambiguousName = targetMethod?.containingClass?.methods?.moreThan(1) {
-                        !it.isConstructor && findMapping(it)?.deobfuscatedName == mappedName
+                        !it.isConstructor && (findMapping(it)?.deobfuscatedName ?: it.name) == mappedName
                     } ?: false
                     val mapped = mappedName + when {
                         ambiguousName && targetMethod != null ->
@@ -550,10 +550,12 @@ internal class PsiMapper(
     private fun remapInternalType(internalType: String, result: StringBuilder): ClassMapping<*, *>? {
         var dimensionCount = 0
         while (internalType[dimensionCount] == '[') {
-            result.append('[')
             dimensionCount++
         }
         if (internalType[dimensionCount] == 'L') {
+            if (dimensionCount > 0) {
+                result.append(internalType, 0, dimensionCount)
+            }
             val type = internalType.substring(dimensionCount + 1, internalType.length - 1).replace('/', '.')
             val mapping = map.findClassMapping(type)
             if (mapping != null) {
