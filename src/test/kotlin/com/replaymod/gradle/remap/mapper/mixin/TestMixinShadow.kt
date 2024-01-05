@@ -99,4 +99,27 @@ class TestMixinShadow {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remaps local classes inside inner classes`() {
+        TestData.remap("""
+            @org.spongepowered.asm.mixin.Mixin(targets = "a.pkg.A${'$'}InnerE${'$'}1ALocalClass")
+            class MixinA {
+                @org.spongepowered.asm.mixin.Shadow
+                private void aMethod();
+                private void test() {
+                    aMethod();
+                }
+            }
+        """.trimIndent()) shouldBe """
+            @org.spongepowered.asm.mixin.Mixin(targets = "b.pkg.B${'$'}InnerE${'$'}1BLocalClass")
+            class MixinA {
+                @org.spongepowered.asm.mixin.Shadow
+                private void bMethod();
+                private void test() {
+                    bMethod();
+                }
+            }
+        """.trimIndent()
+    }
 }

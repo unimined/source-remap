@@ -156,4 +156,14 @@ public class A extends AParent implements AInterface {
             }
         }
     }
+
+    public static class InnerE {
+        public static void aLocalClassInAnInnerClass() {
+            class ALocalClass {
+                void aMethod() {
+                }
+            }
+            new ALocalClass().aMethod();
+        }
+    }
 }

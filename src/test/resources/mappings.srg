@@ -39,6 +39,10 @@ CL: a/pkg/A$InnerC b/pkg/B$InnerC
 MD: a/pkg/A$InnerC/getA ()La/pkg/A$InnerC; b/pkg/B$InnerC/getB ()Lb/pkg/B$InnerC;
 CL: a/pkg/A$InnerC$InnerD b/pkg/B$InnerC$InnerD
 MD: a/pkg/A$InnerC$InnerD/getA ()La/pkg/A$InnerC$InnerD; b/pkg/B$InnerC$InnerD/getB ()Lb/pkg/B$InnerC$InnerD;
+CL: a/pkg/A$InnerE b/pkg/B$InnerE
+MD: a/pkg/A$InnerE/aLocalClassInAnInnerClass ()V b/pkg/B$InnerE/bLocalClassInAnInnerClass ()V
+CL: a/pkg/A$InnerE$1ALocalClass b/pkg/B/B$InnerE$1BLocalClass
+MD: a/pkg/A$InnerE$1ALocalClass/aMethod ()V b/pkg/B/B$InnerE$1BLocalClass/bMethod ()V
 CL: a/pkg/AParent b/pkg/BParent
 MD: a/pkg/AParent/aParentMethod ()V b/pkg/BParent/bParentMethod ()V
 MD: a/pkg/AParent/aGeneratedSynthetic ()La/pkg/AParent; b/pkg/BParent/bGeneratedSynthetic ()Lb/pkg/BParent;

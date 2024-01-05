@@ -149,4 +149,14 @@ public class B extends BParent implements BInterface {
             }
         }
     }
+
+    public static class InnerE {
+        public static void bLocalClassInAnInnerClass() {
+            class BLocalClass {
+                void bMethod() {
+                }
+            }
+            new BLocalClass().bMethod();
+        }
+    }
 }
