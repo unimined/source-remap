@@ -1,7 +1,9 @@
 package com.replaymod.gradle.remap
 
 import com.replaymod.gradle.remap.classpath.ClasspathTransformerManager
+import com.replaymod.gradle.remap.classpath.CustomClsStubReading
 import com.replaymod.gradle.remap.classpath.desynthesizeTransformer
+import com.replaymod.gradle.remap.classpath.keepInnerClassIndexTransformer
 import org.cadixdev.lorenz.MappingSet
 import org.cadixdev.lorenz.io.MappingFormats
 import org.cadixdev.lorenz.model.MethodMapping
@@ -29,7 +31,6 @@ import org.jetbrains.kotlin.com.intellij.psi.PsiManager
 import org.jetbrains.kotlin.com.intellij.psi.PsiMethod
 import org.jetbrains.kotlin.com.intellij.psi.compiled.ClassFileDecompilers
 import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClassFileStubBuilder
-import org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClsFileImpl
 import org.jetbrains.kotlin.com.intellij.psi.impl.java.stubs.impl.PsiJavaFileStubImpl
 import org.jetbrains.kotlin.com.intellij.psi.stubs.BinaryFileStubBuilders
 import org.jetbrains.kotlin.com.intellij.psi.stubs.Stub
@@ -93,7 +94,7 @@ class Transformer(private val map: MappingSet) {
 
             setupIdeaStandaloneExecution()
             val appEnv = KotlinCoreEnvironment.getOrCreateApplicationEnvironmentForProduction(disposable, config)
-            ClasspathTransformerManager.transformers += desynthesizeTransformer
+            ClasspathTransformerManager.transformers += listOf(desynthesizeTransformer, keepInnerClassIndexTransformer)
 
             BinaryFileStubBuilders.INSTANCE.findSingle(JavaClassFileType.INSTANCE)?.let {
                 BinaryFileStubBuilders.INSTANCE.removeExplicitExtension(JavaClassFileType.INSTANCE, it)
@@ -107,14 +108,14 @@ class Transformer(private val map: MappingSet) {
                     ): Stub? {
                         return if (decompiler == null) null else fileContent.file.computeWithPreloadedContentHint(fileContent.content) {
                             try {
-                                val stub = ClsFileImpl.buildFileStub(
+                                val stub = CustomClsStubReading.buildFileStub(
                                     fileContent.file, ClasspathTransformerManager.transform(fileContent.content)
                                 )
                                 if (stub is PsiJavaFileStubImpl) {
                                     stub.psiFactory = CustomClsStubPsiFactory
                                 }
                                 stub
-                            } catch (e: ClsFormatException) {
+                            } catch (_: ClsFormatException) {
                                 null
                             }
                         }

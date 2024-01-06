@@ -62,3 +62,16 @@ val desynthesizeTransformer = ClasspathTransformer { parent ->
             super.visitInnerClass(name, outerName, innerName, desynthesize(access))
     }
 }
+
+val keepInnerClassIndexTransformer = ClasspathTransformer { parent ->
+    object : ClassVisitor(Opcodes.ASM9, parent) {
+        override fun visitInnerClass(name: String?, outerName: String?, innerName: String?, access: Int) {
+            val newInnerName = if (innerName == null) {
+                null
+            } else {
+                name?.substringAfterLast('$', "") ?: innerName
+            }
+            super.visitInnerClass(name, outerName, newInnerName, access)
+        }
+    }
+}
