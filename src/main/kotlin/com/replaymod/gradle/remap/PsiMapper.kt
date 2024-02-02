@@ -11,7 +11,29 @@ import org.jetbrains.kotlin.com.intellij.lang.jvm.JvmModifier
 import org.jetbrains.kotlin.com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
-import org.jetbrains.kotlin.com.intellij.psi.*
+import org.jetbrains.kotlin.com.intellij.psi.JavaPsiFacade
+import org.jetbrains.kotlin.com.intellij.psi.JavaRecursiveElementVisitor
+import org.jetbrains.kotlin.com.intellij.psi.PsiAnnotation
+import org.jetbrains.kotlin.com.intellij.psi.PsiArrayInitializerMemberValue
+import org.jetbrains.kotlin.com.intellij.psi.PsiClass
+import org.jetbrains.kotlin.com.intellij.psi.PsiClassObjectAccessExpression
+import org.jetbrains.kotlin.com.intellij.psi.PsiCodeBlock
+import org.jetbrains.kotlin.com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiExpression
+import org.jetbrains.kotlin.com.intellij.psi.PsiField
+import org.jetbrains.kotlin.com.intellij.psi.PsiFile
+import org.jetbrains.kotlin.com.intellij.psi.PsiIdentifier
+import org.jetbrains.kotlin.com.intellij.psi.PsiImportStatement
+import org.jetbrains.kotlin.com.intellij.psi.PsiImportStaticReferenceElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiJavaCodeReferenceElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiLiteral
+import org.jetbrains.kotlin.com.intellij.psi.PsiMethod
+import org.jetbrains.kotlin.com.intellij.psi.PsiPackage
+import org.jetbrains.kotlin.com.intellij.psi.PsiQualifiedNamedElement
+import org.jetbrains.kotlin.com.intellij.psi.PsiSwitchLabelStatement
+import org.jetbrains.kotlin.com.intellij.psi.PsiType
+import org.jetbrains.kotlin.com.intellij.psi.PsiVariable
+import org.jetbrains.kotlin.com.intellij.psi.PsiWhiteSpace
 import org.jetbrains.kotlin.com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
@@ -22,7 +44,18 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.propertyNameByGetMethodName
 import org.jetbrains.kotlin.load.java.propertyNameBySetMethodName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtBinaryExpression
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtQualifiedExpression
+import org.jetbrains.kotlin.psi.KtReferenceExpression
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
+import org.jetbrains.kotlin.psi.KtSuperExpression
+import org.jetbrains.kotlin.psi.KtTreeVisitor
+import org.jetbrains.kotlin.psi.KtUserType
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
@@ -437,7 +470,10 @@ internal class PsiMapper(
         for (pair in annotation.parameterList.attributes) {
             val name = pair.name
             if (name == null || "value" == name) {
-                val value = pair.value
+                var value = pair.value
+                if (value is PsiArrayInitializerMemberValue) {
+                    value = value.initializers.getOrNull(0)
+                }
                 if (value !is PsiClassObjectAccessExpression) continue
                 val type = value.operand
                 val reference = type.innermostComponentReferenceElement ?: continue
@@ -447,7 +483,10 @@ internal class PsiMapper(
                 return Pair(psiClass, mapping)
             }
             if ("targets" == name) {
-                val value = pair.value
+                var value = pair.value
+                if (value is PsiArrayInitializerMemberValue) {
+                    value = value.initializers.getOrNull(0)
+                }
                 if (value !is PsiLiteral) continue
                 val qualifiedName = value.value as? String ?: continue
                 val mapping = map.findPotentialInnerClassMapping(qualifiedName) ?: continue
