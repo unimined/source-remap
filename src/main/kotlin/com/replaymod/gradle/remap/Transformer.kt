@@ -53,7 +53,7 @@ import java.util.zip.ZipOutputStream
 class Transformer(private val map: MappingSet) {
     var classpath: Collection<Path> = listOf()
     var remappedClasspath: Array<String>? = null
-    var jdkHome: File? = null
+    var jdkHome: File = File(System.getProperty("java.home"))
     var remappedJdkHome: File? = null
     var patternAnnotation: String? = null
     var manageImports = false
@@ -83,9 +83,9 @@ class Transformer(private val map: MappingSet) {
 
             val config = CompilerConfiguration()
             config.put(CommonConfigurationKeys.MODULE_NAME, "main")
-            jdkHome?.let {config.setupJdk(it) }
+            config.setupJdk(jdkHome)
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> JavaSourceRoot(tmpDir.resolve(root.fileName).toFile(), "") })
-            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false) })
+            config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false, null) })
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath.map { JvmClasspathRoot(it.toFile()) }) // This can be extended to use Paths fully, but there's no need atm
             config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
 
@@ -142,7 +142,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = analyze1620(environment, ktFiles)
+            val analysis = analyze1921(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -216,7 +216,7 @@ class Transformer(private val map: MappingSet) {
 
     private fun setupRemappedProject(disposable: Disposable, classpath: Array<String>, sourceRoot: Path): KotlinCoreEnvironment {
         val config = CompilerConfiguration()
-        (remappedJdkHome ?: jdkHome)?.let { config.setupJdk(it) }
+        (remappedJdkHome ?: jdkHome).let { config.setupJdk(it) }
         config.put(CommonConfigurationKeys.MODULE_NAME, "main")
         config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath.map { JvmClasspathRoot(File(it)) })
         if (manageImports) {
@@ -229,7 +229,7 @@ class Transformer(private val map: MappingSet) {
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        analyze1620(environment, emptyList())
+        analyze1921(environment, emptyList())
         return environment
     }
 
