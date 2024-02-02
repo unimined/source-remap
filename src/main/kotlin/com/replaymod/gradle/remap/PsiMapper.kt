@@ -384,7 +384,7 @@ internal class PsiMapper(
         var mapped = mapping?.fullDeobfuscatedName
         val pkg = dollarName.substringBeforeLast(".")
         mapped = mapped?.replace('/', '.')?.replace('$', '.')
-        if (resolved !is PsiPackage) {
+        if (resolved !is PsiPackage && expr.firstChild !is PsiJavaCodeReferenceElement) {
             ambiguousImports[pkg]?.add(mapped ?: name)
         }
         if (mapped == name || mapped == null) return
