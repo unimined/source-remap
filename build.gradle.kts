@@ -31,7 +31,7 @@ tasks.withType<KotlinCompile>().configureEach {
 }
 
 group = "xyz.wagyourtail.unimined"
-version = "1.0.3"
+version = "1.0.4"
 version = if (project.hasProperty("version_snapshot")) version as String + "-SNAPSHOT" else version as String
 
 base {
