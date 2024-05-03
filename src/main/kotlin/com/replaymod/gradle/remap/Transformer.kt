@@ -142,7 +142,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = analyze1921(environment, ktFiles)
+            val analysis = analyze1923(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -229,7 +229,7 @@ class Transformer(private val map: MappingSet) {
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        analyze1921(environment, emptyList())
+        analyze1923(environment, emptyList())
         return environment
     }
 

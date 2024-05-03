@@ -1,11 +1,10 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.9.21"
+    kotlin("jvm") version "1.9.23"
     `maven-publish`
     application
     id("com.github.johnrengelman.shadow") version "7.1.2"
-
 }
 
 java {
@@ -47,10 +46,10 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-val kotlin1921 = kotlinVersion("1.9.21", isPrimaryVersion = true)
+val kotlin1923 = kotlinVersion("1.9.23", isPrimaryVersion = true)
 
 dependencies {
-    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.21")!!)
+    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.23")!!)
     shadow(implementation(kotlin("stdlib"))!!)
     shadow(api("org.cadixdev:lorenz:0.5.0")!!)
     runtimeOnly("net.java.dev.jna:jna:5.10.0") // don't strictly need this but IDEA spams log without
@@ -68,7 +67,7 @@ dependencies {
 }
 
 tasks.jar {
-    from(sourceSets.main.get().output, kotlin1921.output)
+    from(sourceSets.main.get().output, kotlin1923.output)
 
     manifest {
         attributes(
@@ -80,7 +79,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
-    from(sourceSets.main.get().output, kotlin1921.output)
+    from(sourceSets.main.get().output, kotlin1923.output)
 
     configurations = listOf(
         project.configurations.shadow.get()
