@@ -424,17 +424,18 @@ internal class PsiMapper(
         classes.reverse()
         val dollarName = resolved.containingKtFile.packageFqName.child(classes.removeFirst().nameAsName!!).asString() +
             classes.joinToString("") { '$' + it.name!! }
-        if (resolved !is PsiPackage && expr.firstChild !is PsiJavaCodeReferenceElement) {
-            ambiguousImports[pkg]?.add(mapped ?: name)
-        }
-        if (mapped == name || mapped == null) return
         map(expr, fqName.asString(), dollarName)
     }
 
     private fun map(expr: PsiElement, name: String, dollarName: String) {
         val mapping = map.findClassMapping(dollarName) ?: return
         var mapped = mapping.fullDeobfuscatedName
+        val pkg = dollarName.substringBeforeLast(".")
         if (mapped == dollarName) return
+        if (expr !is PsiPackage && expr.firstChild !is PsiJavaCodeReferenceElement) {
+            ambiguousImports[pkg]?.add(mapped ?: name)
+        }
+        if (mapped == name || mapped == null) return
         mapped = mapped.replace('/', '.').replace('$', '.')
 
         // Fully qualified, obvious case

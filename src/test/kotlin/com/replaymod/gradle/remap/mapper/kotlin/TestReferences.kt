@@ -71,7 +71,7 @@ class TestReferences {
 
     @Test
     fun `remaps same-project kotlin class references`() {
-        TestData.transformer.remap(mapOf(
+        TestData.remapKt(mapOf(
             "test.kt" to """
                 import a.pkg.UserA
                 import a.pkg.UserA.InnerA
@@ -83,7 +83,7 @@ class TestReferences {
                 }
             """.trimIndent(),
             "a/pkg/UserA.kt" to "package a.pkg; class UserA { class InnerA {} }",
-        ))["test.kt"]?.first shouldBe """
+        ))["test.kt"] shouldBe """
             import b.pkg.UserB
             import b.pkg.UserB.InnerB
             fun test(): UserB {

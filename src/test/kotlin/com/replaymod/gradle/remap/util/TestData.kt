@@ -45,6 +45,9 @@ object TestData {
             }
         }
         jdkHome = File(System.getProperty("java.home"))
+        if (jdkHome.endsWith("jre")) {
+            jdkHome = jdkHome.parentFile
+        }
         classpath = listOf(
             findClasspathEntry("org.spongepowered.asm.mixin.Mixin"),
             findClasspathEntry("a.pkg.A"),
@@ -103,6 +106,15 @@ object TestData {
         return outputs["test.kt"]!!.toString()
     }
 
+    fun remapKt(content: Map<String, String>): Map<String, String> {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        transformer.remap(mapOf(path to content.mapValues { { it.value.byteInputStream() } })) {
+                _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }
+        return outputs.mapValues { it.value.toString() }
+    }
+
     fun remapKtWithErrors(content: String): Pair<String, List<Pair<Int, String>>> {
         val path = Paths.get(".")
         val outputs = mutableMapOf<String, ByteArrayOutputStream>()
@@ -111,4 +123,14 @@ object TestData {
         }[path to "test.kt"]!!
         return outputs["test.kt"]!!.toString() to errors
     }
+
+    fun remapKtWithErrors(content: Map<String, String>): Map<String, Pair<String, List<Pair<Int, String>>>> {
+        val path = Paths.get(".")
+        val outputs = mutableMapOf<String, ByteArrayOutputStream>()
+        val errors = transformer.remap(mapOf(path to content.mapValues { { it.value.byteInputStream() } })) {
+            _, name -> outputs.getOrPut(name) { ByteArrayOutputStream() }
+        }
+        return outputs.mapValues { it.value.toString() to errors.getValue(path to it.key) }
+    }
+
 }
