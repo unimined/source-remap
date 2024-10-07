@@ -48,3 +48,5 @@ MD: a/pkg/AParent/aParentMethod ()V b/pkg/BParent/bParentMethod ()V
 MD: a/pkg/AParent/aGeneratedSynthetic ()La/pkg/AParent; b/pkg/BParent/bGeneratedSynthetic ()Lb/pkg/BParent;
 CL: a/pkg/AInterface b/pkg/BInterface
 MD: a/pkg/AInterface/aInterfaceMethod ()V b/pkg/BInterface/bInterfaceMethod ()V
+CL: a/pkg/UserA b/pkg/UserB
+CL: a/pkg/UserA$InnerA b/pkg/UserB$InnerB

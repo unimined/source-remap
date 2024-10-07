@@ -1,7 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.9.23"
+    kotlin("jvm") version "2.0.0"
     `maven-publish`
     application
     id("com.github.johnrengelman.shadow") version "7.1.2"
@@ -26,10 +27,6 @@ tasks.withType<JavaCompile>().configureEach {
     }
 }
 
-tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = "1.8"
-}
-
 group = "xyz.wagyourtail.unimined"
 version = "1.0.4"
 version = if (project.hasProperty("version_snapshot")) version as String + "-SNAPSHOT" else version as String
@@ -46,7 +43,7 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-val kotlin1923 = kotlinVersion("1.9.23", isPrimaryVersion = true)
+kotlinVersion("2.0.0")
 
 dependencies {
     shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.23")!!)
@@ -98,7 +95,14 @@ tasks.test {
     useJUnitPlatform()
 }
 
-fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false): SourceSet {
+tasks.withType<KotlinCompile> {
+    compilerOptions {
+        apiVersion.set(KotlinVersion.KOTLIN_1_8)
+        apiVersion.set(KotlinVersion.KOTLIN_1_8)
+    }
+}
+
+fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false) {
     val name = version.replace(".", "")
 
     val sourceSet = sourceSets.create("kotlin$name")
