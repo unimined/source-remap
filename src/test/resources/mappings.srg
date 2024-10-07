@@ -1,3 +1,4 @@
+CL: com not/supposed/to/change
 CL: a/pkg/A b/pkg/B
 FD: a/pkg/A/a b/pkg/B/b
 FD: a/pkg/A/aField b/pkg/B/bField

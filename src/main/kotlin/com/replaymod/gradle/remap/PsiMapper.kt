@@ -445,7 +445,10 @@ internal class PsiMapper(
             is PsiField -> map(expr, resolved)
             is PsiMethod -> map(expr, resolved)
             is KtNamedFunction -> map(expr, resolved.getRepresentativeLightMethod())
-            is PsiClass, is PsiPackage -> map(expr, resolved as PsiQualifiedNamedElement)
+            is PsiClass -> map(expr, resolved as PsiQualifiedNamedElement)
+            is PsiPackage -> {
+                // no-op
+            }
         }
     }
 

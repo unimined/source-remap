@@ -61,4 +61,21 @@ class TestMiscJavaCode {
             }
         """.trimIndent()
     }
+
+    @Test
+    fun `remap class with package name part equal to one of the class mappings`() {
+        TestData.remap("""
+            package com.example.pkg;
+            
+            public class Test {
+            
+            }
+        """.trimIndent()) shouldBe """
+            package com.example.pkg;
+            
+            public class Test {
+            
+            }
+        """.trimIndent()
+    }
 }
