@@ -29,7 +29,6 @@ class TestJavaAutoImports {
     }
 
     @Test
-    @Disabled
     fun `should add unambiguous missing imports from JDK`() {
         TestData.remap("""
             package test;
@@ -138,7 +137,6 @@ class TestJavaAutoImports {
     }
 
     @Test
-    @Disabled
     fun `should add new imports in empty lines`() {
         TestData.remap("""
             package test;
@@ -160,7 +158,6 @@ class TestJavaAutoImports {
     }
 
     @Test
-    @Disabled
     fun `should add new imports in place of removed imports`() {
         TestData.remap("""
             package test;

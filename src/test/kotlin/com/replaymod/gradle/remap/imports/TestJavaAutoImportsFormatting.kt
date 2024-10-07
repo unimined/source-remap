@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test
 
 class TestJavaAutoImportsFormatting {
     @Test
-    @Disabled
     fun `should separate java(x) from other imports with an empty line if possible`() {
         TestData.remap("""
             package test;
@@ -33,7 +32,6 @@ class TestJavaAutoImportsFormatting {
     }
 
     @Test
-    @Disabled
     fun `should put new imports in single line if necessary to preserve original line count`() {
         TestData.remap("""
             package test;
@@ -55,7 +53,6 @@ class TestJavaAutoImportsFormatting {
     }
 
     @Test
-    @Disabled
     fun `should always leave line after imports`() {
         TestData.remap("""
             package test;
@@ -73,7 +70,6 @@ class TestJavaAutoImportsFormatting {
     }
 
     @Test
-    @Disabled
     fun `should put imports in same line as package if required`() {
         TestData.remap("""
             package test;
@@ -89,7 +85,6 @@ class TestJavaAutoImportsFormatting {
     }
 
     @Test
-    @Disabled
     fun `should remove unused imports from shared lines`() {
         TestData.remap("""
             package test;
