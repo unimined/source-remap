@@ -9,6 +9,8 @@ import org.cadixdev.lorenz.io.MappingFormats
 import org.cadixdev.lorenz.model.MethodMapping
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
+import org.jetbrains.kotlin.cli.common.config.ContentRoot
+import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
@@ -24,6 +26,7 @@ import org.jetbrains.kotlin.com.intellij.openapi.Disposable
 import org.jetbrains.kotlin.com.intellij.openapi.extensions.ExtensionPoint
 import org.jetbrains.kotlin.com.intellij.openapi.extensions.Extensions
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
+import org.jetbrains.kotlin.com.intellij.openapi.util.registry.Registry
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.StandardFileSystems
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileManager
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.local.CoreLocalFileSystem
@@ -57,6 +60,7 @@ class Transformer(private val map: MappingSet) {
     var remappedJdkHome: File? = null
     var patternAnnotation: String? = null
     var manageImports = false
+    var verboseCompilerMessages = false
 
     @Throws(IOException::class)
     fun remap(sources: Map<Path, Map<String, () -> InputStream>>, writer: (Path, String) -> OutputStream): Map<Pair<Path, String>, List<Pair<Int, String>>> = remap(sources, emptyMap(), writer)
@@ -128,6 +132,7 @@ class Transformer(private val map: MappingSet) {
             val environment = KotlinCoreEnvironment.createForProduction(
                 projectEnv, config, EnvironmentConfigFiles.JVM_CONFIG_FILES
             )
+            @Suppress("DEPRECATION")
             val rootArea = Extensions.getRootArea()
             synchronized(rootArea) {
                 if (!rootArea.hasExtensionPoint(CustomExceptionHandler.KEY)) {
@@ -142,7 +147,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = analyze1923(environment, ktFiles)
+            val analysis = analyze200(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -222,14 +227,14 @@ class Transformer(private val map: MappingSet) {
         if (manageImports) {
             config.add(CLIConfigurationKeys.CONTENT_ROOTS, JavaSourceRoot(sourceRoot.toFile(), ""))
         }
-        config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
+        config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, verboseCompilerMessages))
 
         val environment = KotlinCoreEnvironment.createForProduction(
             disposable,
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        analyze1923(environment, emptyList())
+        analyze200(environment, emptyList())
         return environment
     }
 

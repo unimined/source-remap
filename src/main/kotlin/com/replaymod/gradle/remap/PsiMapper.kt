@@ -58,6 +58,7 @@ import org.jetbrains.kotlin.psi.KtTreeVisitor
 import org.jetbrains.kotlin.psi.KtUserType
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.psi.synthetics.findClassDescriptor
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -76,6 +77,7 @@ internal class PsiMapper(
     private val methodCache: MutableMap<PsiMethod, Optional<MethodMapping>>
 ) {
     private val mixinMappings = mutableMapOf<String, ClassMapping<*, *>>()
+    private val aliased = mutableSetOf<String>()
     private val errors = mutableListOf<Pair<Int, String>>()
     private val ambiguousImports = mutableMapOf<String, MutableSet<String>>()
     private val ambiguousImportStatics = mutableMapOf<String, MutableSet<String>>()
@@ -130,7 +132,7 @@ internal class PsiMapper(
         )
 
     private fun map(expr: PsiElement, field: PsiField) {
-        val fieldName = field.name ?: return
+        val fieldName = field.name
         val declaringClass = field.containingClass ?: return
         val name = declaringClass.dollarQualifiedName ?: return
         var mapping: ClassMapping<*, *>? = this.mixinMappings[declaringClass.qualifiedName ?: return]
@@ -413,26 +415,63 @@ internal class PsiMapper(
     private fun map(expr: PsiElement, resolved: PsiQualifiedNamedElement) {
         val name = resolved.qualifiedName ?: return
         val dollarName = (if (resolved is PsiClass) resolved.dollarQualifiedName else name) ?: return
-        val mapping = map.findClassMapping(dollarName)
-        var mapped = mapping?.fullDeobfuscatedName
+        map(expr, name, dollarName)
+    }
+
+    private fun map(expr: PsiElement, resolved: KtClassOrObject) {
+        val fqName = resolved.fqName ?: return
+        val classes = generateSequence(resolved) { it.getParentOfType<KtClassOrObject>(true) }.toMutableList()
+        classes.reverse()
+        val dollarName = resolved.containingKtFile.packageFqName.child(classes.removeFirst().nameAsName!!).asString() +
+            classes.joinToString("") { '$' + it.name!! }
+        map(expr, fqName.asString(), dollarName)
+    }
+
+    private fun map(expr: PsiElement, name: String, dollarName: String) {
+        val mapping = map.findClassMapping(dollarName) ?: return
+        var mapped = mapping.fullDeobfuscatedName
         val pkg = dollarName.substringBeforeLast(".")
-        mapped = mapped?.replace('/', '.')?.replace('$', '.')
-        if (resolved !is PsiPackage && expr.firstChild !is PsiJavaCodeReferenceElement) {
+        if (mapped == dollarName) return
+        if (expr !is PsiPackage && expr.firstChild !is PsiJavaCodeReferenceElement) {
             ambiguousImports[pkg]?.add(mapped ?: name)
         }
         if (mapped == name || mapped == null) return
+        mapped = mapped.replace('/', '.').replace('$', '.')
 
+        // Fully qualified, obvious case
         if (expr.text == name) {
             replace(expr, mapped)
             return
         }
+
         val parent: PsiElement? = expr.parent
-        if ((parent is KtUserType || parent is KtQualifiedExpression) && parent.text == name) {
-            if (valid(parent)) {
-                replace(parent, mapped)
+        val parentParent: PsiElement? = parent?.parent
+        val qualifierExpr = when {
+            // In types
+            parent is KtUserType && parent.qualifier != expr -> parent.qualifier
+            // In general code
+            parent is KtQualifiedExpression && parent.receiverExpression != expr -> parent.receiverExpression
+            // In general code when calling the constructor
+            parent is KtCallExpression && parentParent is KtDotQualifiedExpression
+                && parentParent.receiverExpression != parent -> parentParent.receiverExpression
+            else -> null
+        }
+
+        // Fully qualified, tricky cases
+        val simpleName = name.substringAfterLast(".")
+        val qualifierName = name.substringBeforeLast(".")
+        if (expr.text == simpleName && qualifierExpr?.text == qualifierName) {
+            if (valid(qualifierExpr)) {
+                replace(qualifierExpr, mapped.substringBeforeLast("."))
             }
+            replace(expr, mapped.substringAfterLast("."))
             return
         }
+
+        if (qualifierExpr == null && expr.text in aliased) {
+            return
+        }
+
         // FIXME this incorrectly filters things like "Packet<?>" and doesn't filter same-name type aliases
         // if (expr.text != name.substring(name.lastIndexOf('.') + 1)) {
         //     return // type alias, will be remapped at its definition
@@ -446,9 +485,7 @@ internal class PsiMapper(
             is PsiMethod -> map(expr, resolved)
             is KtNamedFunction -> map(expr, resolved.getRepresentativeLightMethod())
             is PsiClass -> map(expr, resolved as PsiQualifiedNamedElement)
-            is PsiPackage -> {
-                // no-op
-            }
+            is KtClassOrObject -> map(expr, resolved)
         }
     }
 
@@ -518,7 +555,7 @@ internal class PsiMapper(
                     methodName.startsWith("is") -> methodName.substring(2)
                     methodName.startsWith("get") || methodName.startsWith("set") -> methodName.substring(3)
                     else -> null
-                }?.decapitalize()
+                }?.replaceFirstChar { it.lowercase() }
 
                 val target = annotation.parameterList.attributes.find {
                     it.name == null || it.name == "value"
@@ -716,6 +753,15 @@ internal class PsiMapper(
     }
 
     fun remapFile(): Pair<String, List<Pair<Int, String>>> {
+        if (file is KtFile) {
+            for (importDirective in file.importDirectives) {
+                val alias = importDirective.aliasName
+                if (alias != null) {
+                    aliased.add(alias)
+                }
+            }
+        }
+
         if (patterns != null) {
             file.accept(object : JavaRecursiveElementVisitor() {
                 override fun visitCodeBlock(block: PsiCodeBlock) {

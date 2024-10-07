@@ -7,11 +7,11 @@ import org.jetbrains.kotlin.cli.jvm.compiler.TopDownAnalyzerFacadeForJVM
 import org.jetbrains.kotlin.com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.psi.KtFile
 
-fun analyze1923(environment: KotlinCoreEnvironment, ktFiles: List<KtFile>): AnalysisResult {
+fun analyze200(environment: KotlinCoreEnvironment, ktFiles: List<KtFile>): AnalysisResult {
     return TopDownAnalyzerFacadeForJVM.analyzeFilesWithJavaIntegration(
         environment.project,
         ktFiles,
-        NoScopeRecordCliBindingTrace(),
+        NoScopeRecordCliBindingTrace(environment.project),
         environment.configuration,
         { scope: GlobalSearchScope -> environment.createPackagePartProvider(scope) }
     )

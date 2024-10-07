@@ -2,6 +2,7 @@ package com.replaymod.gradle.remap.imports
 
 import com.replaymod.gradle.remap.util.TestData
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 class TestJavaAutoImportsFormatting {

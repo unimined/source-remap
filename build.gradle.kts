@@ -1,38 +1,31 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.9.23"
+    kotlin("jvm") version "2.0.0"
     `maven-publish`
     application
     id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
+
+group = "xyz.wagyourtail.unimined"
+version = "1.0.5"
+version = if (project.hasProperty("version_snapshot")) version as String + "-SNAPSHOT" else version as String
+
 java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    }
+}
+
+kotlin {
+    jvmToolchain(8)
 }
 
 application {
     mainClass.set("com.replaymod.gradle.remap.MainKt")
 }
-
-base {
-    archivesName.set("source-remap")
-}
-
-tasks.withType<JavaCompile>().configureEach {
-    if (JavaVersion.current().isJava9Compatible) {
-        options.release.set(8)
-    }
-}
-
-tasks.withType<KotlinCompile>().configureEach {
-    kotlinOptions.jvmTarget = "1.8"
-}
-
-group = "xyz.wagyourtail.unimined"
-version = "1.0.4"
-version = if (project.hasProperty("version_snapshot")) version as String + "-SNAPSHOT" else version as String
 
 base {
     archivesName.set("source-remap")
@@ -46,10 +39,10 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-val kotlin1923 = kotlinVersion("1.9.23", isPrimaryVersion = true)
+val kotlin200 = kotlinVersion("2.0.0", true)
 
 dependencies {
-    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:1.9.23")!!)
+    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.0")!!)
     shadow(implementation(kotlin("stdlib"))!!)
     shadow(api("org.cadixdev:lorenz:0.5.0")!!)
     runtimeOnly("net.java.dev.jna:jna:5.10.0") // don't strictly need this but IDEA spams log without
@@ -67,7 +60,7 @@ dependencies {
 }
 
 tasks.jar {
-    from(sourceSets.main.get().output, kotlin1923.output)
+    from(sourceSets.main.get().output, kotlin200.output)
 
     manifest {
         attributes(
@@ -79,7 +72,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
-    from(sourceSets.main.get().output, kotlin1923.output)
+    from(sourceSets.main.get().output, kotlin200.output)
 
     configurations = listOf(
         project.configurations.shadow.get()
@@ -96,6 +89,16 @@ tasks.shadowJar {
 
 tasks.test {
     useJUnitPlatform()
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(8))
+    }
+}
+
+tasks.withType<KotlinCompile> {
+    compilerOptions {
+        apiVersion.set(KotlinVersion.KOTLIN_1_8)
+        apiVersion.set(KotlinVersion.KOTLIN_1_8)
+    }
 }
 
 fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false): SourceSet {
