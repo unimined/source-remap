@@ -131,6 +131,13 @@ internal object PsiUtils {
     fun getSignature(method: PsiMethod): MethodSignature = MethodSignature(method.name, getDescriptor(method))
 
     private fun getDescriptor(method: PsiMethod): MethodDescriptor {
-        return MethodDescriptor.of(ClassUtil.getAsmMethodSignature(method))
+        val args = ClassUtil.getAsmMethodSignature(method)
+        if (args.endsWith(")")) {
+            return MethodDescriptor.of("${args}V")
+        }
+        if (args.isEmpty()) {
+            return MethodDescriptor.of("()V")
+        }
+        return MethodDescriptor.of(args)
     }
 }
