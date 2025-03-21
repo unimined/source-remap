@@ -24,6 +24,9 @@ import java.nio.file.*
 import java.util.stream.Collectors
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
+import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.isDirectory
 import kotlin.system.exitProcess
 import kotlin.time.ExperimentalTime
 import kotlin.time.measureTime
@@ -264,35 +267,37 @@ private fun runTransformer(mappings: MappingSet, classpath: Collection<Path>, re
             }
         }
 
+        val fileSystems = mutableMapOf<Path, FileSystem>()
+
         val results = transformer.remap(sources) { root, unit ->
-            if (root.toString().endsWith(".jar") || root.toString().endsWith(".zip")) {
-                val outputPath = remap.getValue(root)
-                if (outputPath.toString().endsWith(".jar") || outputPath.toString().endsWith(".zip")) {
-                    val jar = outputPath.toFile()
-                    if (!jar.exists()) {
-                        val zos = ZipOutputStream(FileOutputStream(jar))
-                        zos.close()
+            val outputPath = remap.getValue(root)
+            if (outputPath.toString().endsWith(".jar") || outputPath.toString().endsWith(".zip")) {
+                    val fs = fileSystems.getOrPut(outputPath) {
+                        val jar = outputPath.toFile()
+                        if (!jar.exists()) {
+                            val zos = ZipOutputStream(FileOutputStream(jar))
+                            zos.close()
+                        }
+                        val fs = outputPath.openZipFileSystem(mapOf("create" to false))
+                        closeLater.add(fs)
+                        fs
                     }
-                    val fs = outputPath.openZipFileSystem(mapOf("create" to false))
-                    closeLater.add(fs)
+                    val path = fs.getPath(unit)
+                    path.parent?.createDirectories()
                     Files.newOutputStream(
-                        fs.getPath(unit),
+                        path,
                         StandardOpenOption.CREATE,
                         StandardOpenOption.TRUNCATE_EXISTING
                     )
-                } else if (outputPath.endsWith(".java") || outputPath.endsWith(".kt")) {
-                    Files.newOutputStream(outputPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-                } else {
-                    Files.newOutputStream(
-                        outputPath.resolve(unit),
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING
-                    )
-                }
+            } else {
+                val path = outputPath.resolve(unit)
+                path.parent?.createDirectories()
+                Files.newOutputStream(
+                    path,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+                )
             }
-            val output = remap.getValue(root).resolve(unit)
-            Files.createDirectories(output.parent)
-            Files.newOutputStream(output, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
         }
 
         for ((root, unitName) in sources.entries.flatMap { entry -> entry.value.keys.map { entry.key to it } }) {
