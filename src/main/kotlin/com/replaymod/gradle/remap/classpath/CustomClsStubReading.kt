@@ -1,5 +1,7 @@
 package com.replaymod.gradle.remap.classpath
 
+import com.replaymod.gradle.remap.classpath.CustomClsStubReading.FileContentPair.content
+import com.replaymod.gradle.remap.classpath.CustomClsStubReading.FileContentPair.file
 import org.jetbrains.kotlin.com.intellij.openapi.progress.ProcessCanceledException
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.kotlin.com.intellij.pom.java.LanguageLevel
@@ -11,43 +13,58 @@ import org.jetbrains.kotlin.com.intellij.util.BitUtil
 import org.jetbrains.kotlin.com.intellij.util.cls.ClsFormatException
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.Opcodes
-import java.io.IOException
+
+private typealias InternalFileContentPair = org.jetbrains.kotlin.com.intellij.openapi.util.Pair<VirtualFile, ClassReader>
 
 object CustomClsStubReading {
-    class FileContentPair(val file: VirtualFile, val content: ByteArray) {
-        override fun toString() = file.toString()
+    object FileContentPair {
+        @JvmStatic
+        private val internalClass = Class.forName("org.jetbrains.kotlin.com.intellij.psi.impl.compiled.ClsFileImpl\$FileContentPair")
+        @JvmStatic
+        private val constructor = internalClass.getDeclaredConstructor(VirtualFile::class.java, ClassReader::class.java)
+
+        init {
+            constructor.isAccessible = true
+        }
+
+        @JvmStatic
+        operator fun invoke(file: VirtualFile, content: ClassReader): InternalFileContentPair {
+            @Suppress("UNCHECKED_CAST")
+            return constructor.newInstance(file, content) as InternalFileContentPair
+        }
+
+        @JvmStatic
+        val InternalFileContentPair.file: VirtualFile get() = first
+
+        @JvmStatic
+        val InternalFileContentPair.content: ClassReader get() = second
     }
 
-    object InnerClassStrategy : InnerClassSourceStrategy<FileContentPair> {
-        override fun findInnerClass(innerName: String, outerClass: FileContentPair): FileContentPair? {
+    object InnerClassStrategy : InnerClassSourceStrategy<InternalFileContentPair> {
+        override fun findInnerClass(innerName: String, outerClass: InternalFileContentPair): InternalFileContentPair? {
             val baseName = outerClass.file.nameWithoutExtension
             val dir = outerClass.file.parent!!
             val innerClass = dir.findChild("$baseName$$innerName.class")
             if (innerClass != null) {
-                try {
-                    val origBytes = innerClass.contentsToByteArray(false)
-                    return FileContentPair(innerClass, ClasspathTransformerManager.transform(origBytes))
-                } catch (_: IOException) {
-                }
+                return FileContentPair(innerClass, ClasspathTransformerManager.transform(outerClass.content))
             }
             return null
         }
 
-        override fun accept(innerClass: FileContentPair, visitor: StubBuildingVisitor<FileContentPair>) {
+        override fun accept(innerClass: InternalFileContentPair, visitor: StubBuildingVisitor<InternalFileContentPair>) {
             try {
-                ClassReader(innerClass.content).accept(visitor, ClassReader.SKIP_FRAMES)
+                innerClass.content.accept(visitor, ClassReader.SKIP_FRAMES)
             } catch (_: Exception) {
             }
         }
     }
 
-    fun buildFileStub(file: VirtualFile, bytes: ByteArray): PsiJavaFileStub? {
+    fun buildFileStub(file: VirtualFile, reader: ClassReader): PsiJavaFileStub? {
         try {
-            if (ClassFileViewProvider.isInnerClass(file, bytes)) {
+            if (ClassFileViewProvider.isInnerClass(file, reader.b)) {
                 return null
             }
 
-            val reader = ClassReader(bytes)
             val className = file.nameWithoutExtension
             val internalName = reader.className
             val module = internalName == "module-info" && BitUtil.isSet(reader.access, Opcodes.ACC_MODULE)
@@ -73,7 +90,7 @@ object CustomClsStubReading {
                     level, true
                 )
                 try {
-                    val source = FileContentPair(file, bytes)
+                    val source = FileContentPair(file, reader)
                     val visitor = StubBuildingVisitor(source, InnerClassStrategy, stub, 0, className)
                     reader.accept(visitor, ClassReader.SKIP_FRAMES)
                     if (visitor.result != null) {
