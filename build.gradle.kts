@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "2.0.0"
+    kotlin("jvm") version "2.1.20"
     `maven-publish`
     application
     id("com.github.johnrengelman.shadow") version "7.1.2"
@@ -39,10 +39,8 @@ repositories {
 val testA by sourceSets.creating
 val testB by sourceSets.creating
 
-val kotlin200 = kotlinVersion("2.0.0", true)
-
 dependencies {
-    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.0.0")!!)
+    shadow(api("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.1.20")!!)
     shadow(implementation(kotlin("stdlib"))!!)
     shadow(api("org.cadixdev:lorenz:0.5.0")!!)
     runtimeOnly("net.java.dev.jna:jna:5.10.0") // don't strictly need this but IDEA spams log without
@@ -60,7 +58,7 @@ dependencies {
 }
 
 tasks.jar {
-    from(sourceSets.main.get().output, kotlin200.output)
+    from(sourceSets.main.get().output)
 
     manifest {
         attributes(
@@ -72,7 +70,7 @@ tasks.jar {
 }
 
 tasks.shadowJar {
-    from(sourceSets.main.get().output, kotlin200.output)
+    from(sourceSets.main.get().output)
 
     configurations = listOf(
         project.configurations.shadow.get()
@@ -99,33 +97,6 @@ tasks.withType<KotlinCompile> {
         apiVersion.set(KotlinVersion.KOTLIN_1_8)
         apiVersion.set(KotlinVersion.KOTLIN_1_8)
     }
-}
-
-fun kotlinVersion(version: String, isPrimaryVersion: Boolean = false): SourceSet {
-    val name = version.replace(".", "")
-
-    val sourceSet = sourceSets.create("kotlin$name")
-
-    val testClasspath = configurations.create("kotlin${name}TestClasspath") {
-        extendsFrom(configurations.testRuntimeClasspath.get())
-        extendsFrom(configurations[sourceSet.compileOnlyConfigurationName])
-    }
-
-    dependencies {
-        implementation(sourceSet.output)
-        sourceSet.compileOnlyConfigurationName("org.jetbrains.kotlin:kotlin-compiler-embeddable:$version")
-    }
-
-    if (!isPrimaryVersion) {
-        val testTask = tasks.register("testKotlin$name", Test::class) {
-            useJUnitPlatform()
-            testClassesDirs = sourceSets.test.get().output.classesDirs
-            classpath = testClasspath + sourceSets.test.get().output + sourceSets.main.get().output
-        }
-        tasks.check { dependsOn(testTask) }
-    }
-
-    return sourceSet
 }
 
 publishing {

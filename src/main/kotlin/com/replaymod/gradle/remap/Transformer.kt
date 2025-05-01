@@ -9,8 +9,6 @@ import org.cadixdev.lorenz.io.MappingFormats
 import org.cadixdev.lorenz.model.MethodMapping
 import org.jetbrains.kotlin.cli.common.CLIConfigurationKeys
 import org.jetbrains.kotlin.cli.common.config.KotlinSourceRoot
-import org.jetbrains.kotlin.cli.common.config.ContentRoot
-import org.jetbrains.kotlin.cli.common.messages.MessageCollector
 import org.jetbrains.kotlin.cli.common.messages.MessageRenderer
 import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles
@@ -26,7 +24,6 @@ import org.jetbrains.kotlin.com.intellij.openapi.Disposable
 import org.jetbrains.kotlin.com.intellij.openapi.extensions.ExtensionPoint
 import org.jetbrains.kotlin.com.intellij.openapi.extensions.Extensions
 import org.jetbrains.kotlin.com.intellij.openapi.util.Disposer
-import org.jetbrains.kotlin.com.intellij.openapi.util.registry.Registry
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.StandardFileSystems
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.VirtualFileManager
 import org.jetbrains.kotlin.com.intellij.openapi.vfs.local.CoreLocalFileSystem
@@ -44,10 +41,12 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.JVMConfigurationKeys
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.utils.PathUtil
+import org.jetbrains.org.objectweb.asm.ClassReader
 import java.io.*
 import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.nio.file.*
+import java.nio.file.FileSystem
 import java.util.*
 import java.util.stream.Collectors
 import java.util.zip.ZipFile
@@ -91,7 +90,7 @@ class Transformer(private val map: MappingSet) {
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> JavaSourceRoot(tmpDir.resolve(root.fileName).toFile(), "") })
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, sources.keys.map { root -> KotlinSourceRoot(tmpDir.resolve(root.fileName).toAbsolutePath().toString(), false, null) })
             config.addAll(CLIConfigurationKeys.CONTENT_ROOTS, classpath.map { JvmClasspathRoot(it.toFile()) }) // This can be extended to use Paths fully, but there's no need atm
-            config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
+            config.put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, true))
 
             // Our PsiMapper only works with the PSI tree elements, not with the faster (but kotlin-specific) classes
             config.put(JVMConfigurationKeys.USE_PSI_CLASS_FILES_READING, true)
@@ -113,7 +112,7 @@ class Transformer(private val map: MappingSet) {
                         return if (decompiler == null) null else fileContent.file.computeWithPreloadedContentHint(fileContent.content) {
                             try {
                                 val stub = CustomClsStubReading.buildFileStub(
-                                    fileContent.file, ClasspathTransformerManager.transform(fileContent.content)
+                                    fileContent.file, ClasspathTransformerManager.transform(ClassReader(fileContent.content))
                                 )
                                 if (stub is PsiJavaFileStubImpl) {
                                     stub.psiFactory = CustomClsStubPsiFactory
@@ -136,7 +135,7 @@ class Transformer(private val map: MappingSet) {
             val rootArea = Extensions.getRootArea()
             synchronized(rootArea) {
                 if (!rootArea.hasExtensionPoint(CustomExceptionHandler.KEY)) {
-                    rootArea.registerExtensionPoint(CustomExceptionHandler.KEY.name, CustomExceptionHandler::class.java.name, ExtensionPoint.Kind.INTERFACE)
+                    rootArea.registerExtensionPoint(CustomExceptionHandler.KEY.name, CustomExceptionHandler::class.java.name, ExtensionPoint.Kind.INTERFACE, false)
                 }
             }
 
@@ -147,7 +146,7 @@ class Transformer(private val map: MappingSet) {
             val psiFiles = virtualFiles.mapValues { psiManager.findFile(it.value)!! }
             val ktFiles = psiFiles.values.filterIsInstance<KtFile>()
 
-            val analysis = analyze200(environment, ktFiles)
+            val analysis = analyze(environment, ktFiles)
 
             val remappedEnv = remappedClasspath?.let {
                 setupRemappedProject(disposable, it, processedTmpDir)
@@ -227,14 +226,14 @@ class Transformer(private val map: MappingSet) {
         if (manageImports) {
             config.add(CLIConfigurationKeys.CONTENT_ROOTS, JavaSourceRoot(sourceRoot.toFile(), ""))
         }
-        config.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, verboseCompilerMessages))
+        config.put(CommonConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector(System.err, MessageRenderer.GRADLE_STYLE, verboseCompilerMessages))
 
         val environment = KotlinCoreEnvironment.createForProduction(
             disposable,
             config,
             EnvironmentConfigFiles.JVM_CONFIG_FILES
         )
-        analyze200(environment, emptyList())
+        analyze(environment, emptyList())
         return environment
     }
 

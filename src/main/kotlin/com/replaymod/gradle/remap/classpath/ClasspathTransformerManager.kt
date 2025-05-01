@@ -7,7 +7,7 @@ import org.jetbrains.org.objectweb.asm.ClassWriter
 object ClasspathTransformerManager {
     val transformers = mutableListOf<ClasspathTransformer>()
 
-    fun transform(input: ByteArray): ByteArray {
+    fun transform(input: ClassReader): ClassReader {
         if (transformers.isEmpty()) {
             return input
         }
@@ -19,8 +19,7 @@ object ClasspathTransformerManager {
             copyConstantPool = copyConstantPool && transformer.canCopyConstantPool
         }
 
-        val reader = ClassReader(input)
-        val writer = ClassWriter(if (copyConstantPool) reader else null, computeFlags)
+        val writer = ClassWriter(if (copyConstantPool) input else null, computeFlags)
 
         var visitor: ClassVisitor = writer
         for (transformer in transformers.asReversed()) {
@@ -30,7 +29,9 @@ object ClasspathTransformerManager {
             return input
         }
 
-        reader.accept(visitor, 0)
-        return writer.toByteArray()
+        input.accept(visitor, 0)
+
+        val result = writer.toByteArray()
+        return if (result.contentEquals(input.b)) input else ClassReader(result)
     }
 }

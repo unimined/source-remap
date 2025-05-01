@@ -11,29 +11,7 @@ import org.jetbrains.kotlin.com.intellij.lang.jvm.JvmModifier
 import org.jetbrains.kotlin.com.intellij.openapi.project.Project
 import org.jetbrains.kotlin.com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.com.intellij.openapi.util.text.StringUtil
-import org.jetbrains.kotlin.com.intellij.psi.JavaPsiFacade
-import org.jetbrains.kotlin.com.intellij.psi.JavaRecursiveElementVisitor
-import org.jetbrains.kotlin.com.intellij.psi.PsiAnnotation
-import org.jetbrains.kotlin.com.intellij.psi.PsiArrayInitializerMemberValue
-import org.jetbrains.kotlin.com.intellij.psi.PsiClass
-import org.jetbrains.kotlin.com.intellij.psi.PsiClassObjectAccessExpression
-import org.jetbrains.kotlin.com.intellij.psi.PsiCodeBlock
-import org.jetbrains.kotlin.com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.com.intellij.psi.PsiExpression
-import org.jetbrains.kotlin.com.intellij.psi.PsiField
-import org.jetbrains.kotlin.com.intellij.psi.PsiFile
-import org.jetbrains.kotlin.com.intellij.psi.PsiIdentifier
-import org.jetbrains.kotlin.com.intellij.psi.PsiImportStatement
-import org.jetbrains.kotlin.com.intellij.psi.PsiImportStaticReferenceElement
-import org.jetbrains.kotlin.com.intellij.psi.PsiJavaCodeReferenceElement
-import org.jetbrains.kotlin.com.intellij.psi.PsiLiteral
-import org.jetbrains.kotlin.com.intellij.psi.PsiMethod
-import org.jetbrains.kotlin.com.intellij.psi.PsiPackage
-import org.jetbrains.kotlin.com.intellij.psi.PsiQualifiedNamedElement
-import org.jetbrains.kotlin.com.intellij.psi.PsiSwitchLabelStatement
-import org.jetbrains.kotlin.com.intellij.psi.PsiType
-import org.jetbrains.kotlin.com.intellij.psi.PsiVariable
-import org.jetbrains.kotlin.com.intellij.psi.PsiWhiteSpace
+import org.jetbrains.kotlin.com.intellij.psi.*
 import org.jetbrains.kotlin.com.intellij.psi.search.GlobalSearchScope
 import org.jetbrains.kotlin.com.intellij.psi.util.ClassUtil
 import org.jetbrains.kotlin.com.intellij.psi.util.PsiTreeUtil
@@ -44,18 +22,7 @@ import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.propertyNameByGetMethodName
 import org.jetbrains.kotlin.load.java.propertyNameBySetMethodName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.KtBinaryExpression
-import org.jetbrains.kotlin.psi.KtCallExpression
-import org.jetbrains.kotlin.psi.KtClassOrObject
-import org.jetbrains.kotlin.psi.KtDotQualifiedExpression
-import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtNamedFunction
-import org.jetbrains.kotlin.psi.KtQualifiedExpression
-import org.jetbrains.kotlin.psi.KtReferenceExpression
-import org.jetbrains.kotlin.psi.KtSimpleNameExpression
-import org.jetbrains.kotlin.psi.KtSuperExpression
-import org.jetbrains.kotlin.psi.KtTreeVisitor
-import org.jetbrains.kotlin.psi.KtUserType
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
@@ -191,7 +158,7 @@ internal class PsiMapper(
             val maybeGetter = propertyNameByGetMethodName(Name.identifier(mapped))
             if (maybeGetter != null // must have getter-style name
                     && !method.hasParameters() // getters cannot take any arguments
-                    && method.returnType != PsiType.VOID // and must return some value
+                    && method.returnType != PsiTypes.voidType() // and must return some value
                     && !method.hasModifier(JvmModifier.STATIC) // synthetic properties cannot be static
                     // `super.getDebugInfo()` is a special case which cannot be replaced with a synthetic property
                     && expr.parent.parent.let { it !is KtDotQualifiedExpression || it.firstChild !is KtSuperExpression }
@@ -229,7 +196,7 @@ internal class PsiMapper(
 
     private fun getSyntheticPropertyForSetter(expr: PsiElement, method: PsiMethod, mapping: MethodMapping): String? {
         // Check if the setter method qualifies for synthetic property conversion
-        if (method.returnType != PsiType.VOID) return null
+        if (method.returnType != PsiTypes.voidType()) return null
         if (method.hasModifier(JvmModifier.STATIC)) return null
         val parameter = method.parameterList.parameters.singleOrNull() ?: return null
         val type = ClassUtil.getBinaryPresentation(parameter.type)
